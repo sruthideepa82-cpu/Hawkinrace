@@ -38,7 +38,8 @@ export class RaceSession {
 
   step(dt: number, input: InputState): void {
     const prev = { x: this.car.x, y: this.car.y };
-    this.car.step(dt, this.race.isRacing ? input : NO_INPUT);
+    const surface = this.layout.getSurface(this.car.x, this.car.y);
+    this.car.step(dt, this.race.isRacing ? input : NO_INPUT, surface.dragMultiplier);
 
     const hit = this.layout.resolveBoundary(this.car.x, this.car.y, this.car.tuning.collisionRadius);
     if (hit) this.car.applyCollision(hit);

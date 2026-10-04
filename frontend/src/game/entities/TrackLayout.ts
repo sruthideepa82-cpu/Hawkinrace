@@ -7,6 +7,13 @@ export interface SpawnPoint extends Point {
   heading: number;
 }
 
+export type SurfaceType = 'road' | 'sidewalk' | 'grass';
+
+export interface SurfaceData {
+  type: SurfaceType;
+  dragMultiplier: number;
+}
+
 /** Pure track data + queries (no Phaser), so it can be tested and re-skinned. */
 export class TrackLayout {
   readonly centerline: Point[];
@@ -51,13 +58,22 @@ export class TrackLayout {
     return new Gate(this.centerline[i], this.directionAt(i), this.roadWidth / 2);
   }
 
-  /** Returns a correction if a circle at (x, y) pokes past the road edge. */
+  getSurface(x: number, y: number): SurfaceData {
+    const { distance } = nearestOnClosedPolyline(this.centerline, x, y);
+    const half = this.roadWidth / 2;
+    if (distance <= half) return { type: 'road', dragMultiplier: 1 };
+    if (distance <= half + 40) return { type: 'sidewalk', dragMultiplier: 1.5 };
+    return { type: 'grass', dragMultiplier: 3.0 };
+  }
+
+  /** Returns a correction if a circle at (x, y) hits a hard boundary (buildings/fences). */
   resolveBoundary(x: number, y: number, radius: number): CollisionResult | null {
-    const limit = this.roadWidth / 2 - radius;
+    // Hard limit is where buildings and fences are placed
+    const hardLimit = (this.roadWidth / 2) + 100 - radius;
     const { distance, point } = nearestOnClosedPolyline(this.centerline, x, y);
-    if (distance <= limit || distance === 0) return null;
+    if (distance <= hardLimit || distance === 0) return null;
     const ox = (x - point.x) / distance;
     const oy = (y - point.y) / distance;
-    return { x: point.x + ox * limit, y: point.y + oy * limit, nx: -ox, ny: -oy };
+    return { x: point.x + ox * hardLimit, y: point.y + oy * hardLimit, nx: -ox, ny: -oy };
   }
 }

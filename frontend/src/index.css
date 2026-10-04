@@ -176,7 +176,7 @@ h1, h2, h3, p, dl, dd, ol { margin: 0; padding: 0; }
 }
 .card:hover:not(.is-locked), .card:focus-visible { transform: translateY(-8px); border-color: var(--accent); box-shadow: 0 10px 34px color-mix(in srgb, var(--accent) 45%, transparent); outline: none; }
 .card.is-selected { border: 2px solid var(--accent); box-shadow: 0 0 30px color-mix(in srgb, var(--accent) 60%, transparent), inset 0 0 26px color-mix(in srgb, var(--accent) 18%, transparent); transform: translateY(-4px); }
-.card.is-locked { cursor: not-allowed; filter: grayscale(1); opacity: 0.5; }
+.card.is-locked { cursor: not-allowed; filter: grayscale(0.4) brightness(0.6); opacity: 0.8; }
 .card-title { font-family: var(--display); font-size: 26px; letter-spacing: 0.12em; }
 .card-role { font-family: var(--mono); font-size: 13px; letter-spacing: 0.12em; color: var(--accent); text-transform: uppercase; }
 .card-blurb { color: var(--muted); font-size: 14px; min-height: 2.6em; }

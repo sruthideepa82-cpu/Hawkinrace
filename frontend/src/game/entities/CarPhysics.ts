@@ -54,7 +54,7 @@ export class CarPhysics {
     return Math.hypot(this.vx, this.vy);
   }
 
-  step(dt: number, input: InputState): void {
+  step(dt: number, input: InputState, dragMultiplier: number = 1): void {
     const t = this.tuning;
 
     // 1. Wheel position moves gradually toward the key, never snaps.
@@ -84,7 +84,8 @@ export class CarPhysics {
         fwd += t.brakeDeceleration * dt; // stop rolling backwards first
       } else {
         const ratio = Math.min(fwd / t.maxSpeed, 1);
-        fwd += t.acceleration * Math.max(0.08, 1 - ratio * ratio) * dt;
+        // Off-road cuts max acceleration
+        fwd += t.acceleration * Math.max(0.08, 1 - ratio * ratio) * dt * (1 / dragMultiplier);
       }
     } else if (input.brake) {
       if (fwd > t.reverseSwitchSpeed) {
@@ -93,10 +94,13 @@ export class CarPhysics {
         fwd -= t.reverseAcceleration * dt; // slow enough: reverse
       }
     } else {
-      const decel = (t.coastFriction + t.drag * Math.abs(fwd)) * dt;
+      const decel = (t.coastFriction + t.drag * Math.abs(fwd)) * dragMultiplier * dt;
       fwd = Math.abs(fwd) <= decel ? 0 : fwd - Math.sign(fwd) * decel;
     }
-    fwd = Math.max(-t.maxReverseSpeed, Math.min(t.maxSpeed, fwd));
+    
+    // Also apply drag multiplier to max speed if it's very high (like grass)
+    const effectiveMaxSpeed = t.maxSpeed / Math.sqrt(dragMultiplier);
+    fwd = Math.max(-t.maxReverseSpeed, Math.min(effectiveMaxSpeed, fwd));
 
     // 5. Tyre grip bleeds off sideways sliding.
     lat *= Math.exp(-t.lateralGrip * dt);

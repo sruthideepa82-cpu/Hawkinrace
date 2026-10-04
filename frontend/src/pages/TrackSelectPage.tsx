@@ -22,6 +22,7 @@ export function TrackSelectPage() {
             <h3 className="card-title">{t.name}</h3>
             <p className="card-blurb">{t.description}</p>
             <dl className="facts">
+              <div><dt>ENVIRONMENT</dt><dd>{t.environment}</dd></div>
               <div><dt>DIFFICULTY</dt><dd>{t.difficulty}</dd></div>
               <div><dt>WEATHER</dt><dd>{t.weather}</dd></div>
               <div><dt>BEST TIME</dt><dd>{t.bestTimeMs === null ? '--:--.---' : formatRaceTime(t.bestTimeMs)}</dd></div>

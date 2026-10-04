@@ -23,6 +23,7 @@ export class GameScene extends Phaser.Scene {
   private accumulator = 0;
   private resultReported = false;
   private previousState: string = 'countdown';
+  private rainEmitter?: Phaser.GameObjects.Particles.ParticleEmitter;
 
   constructor() {
     super(SCENE_KEYS.game);
@@ -45,6 +46,36 @@ export class GameScene extends Phaser.Scene {
     const cam = this.cameras.main;
     cam.setBounds(0, 0, layout.worldWidth, layout.worldHeight);
     cam.setBackgroundColor(0x07060d);
+
+    // Weather Effects
+    if (this.bridge.config.trackId === 'hawkins-streets') {
+      // Generate rain texture
+      const rg = this.make.graphics({x:0, y:0}, false);
+      rg.fillStyle(0xaaaaff, 0.4);
+      rg.fillRect(0, 0, 2, 20);
+      rg.generateTexture('rain_drop', 2, 20);
+      rg.destroy();
+
+      // Rain particles attached to camera
+      const particles = this.add.particles(0, 0, 'rain_drop', {
+        x: { min: -1000, max: 2000 },
+        y: { min: -1000, max: 1500 },
+        lifespan: 1000,
+        speedY: { min: 400, max: 600 },
+        speedX: { min: -50, max: 50 },
+        angle: 90,
+        quantity: 2,
+        blendMode: 'ADD'
+      });
+      particles.setDepth(10);
+      
+      // We'll update particle emitter position to follow camera in update loop
+      this.rainEmitter = particles;
+
+      // Subtle fog overlay
+      this.add.rectangle(0, 0, layout.worldWidth, layout.worldHeight, 0x07061a, 0.2).setOrigin(0, 0).setDepth(5).setBlendMode(Phaser.BlendModes.SCREEN);
+    }
+
     // Chase camera: sits ahead of the car and turns with it (see CameraRig).
     this.cameraRig = new CameraRig(cam);
     this.cameraRig.snap(this.playerCar.physics);
@@ -70,6 +101,10 @@ export class GameScene extends Phaser.Scene {
     const speed = this.playerCar.physics.speed;
     this.playerCar.sync(input.brake, input.accelerate, speed);
     this.cameraRig.update(this.playerCar.physics, speed, deltaMs);
+
+    if (this.rainEmitter) {
+      this.rainEmitter.setPosition(this.cameras.main.scrollX + this.cameras.main.width / 2, this.cameras.main.scrollY);
+    }
 
     const hud = this.session.hudData();
     if (this.previousState === 'countdown' && hud.state === 'racing') {
