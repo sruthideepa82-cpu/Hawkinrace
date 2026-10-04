@@ -1,0 +1,63 @@
+import type { Point, TrackDefinition } from '../config/tracks';
+import { Gate } from '../systems/Gate';
+import { nearestOnClosedPolyline, smoothClosedLoop, wrapIndex } from '../utils/geometry';
+import type { CollisionResult } from './CarPhysics';
+
+export interface SpawnPoint extends Point {
+  heading: number;
+}
+
+/** Pure track data + queries (no Phaser), so it can be tested and re-skinned. */
+export class TrackLayout {
+  readonly centerline: Point[];
+  readonly roadWidth: number;
+  readonly worldWidth: number;
+  readonly worldHeight: number;
+  readonly finishGate: Gate;
+  readonly checkpoints: Gate[];
+  readonly spawn: SpawnPoint;
+
+  constructor(readonly definition: TrackDefinition) {
+    this.roadWidth = definition.roadWidth;
+    this.worldWidth = definition.worldWidth;
+    this.worldHeight = definition.worldHeight;
+    this.centerline = smoothClosedLoop(definition.controlPoints, definition.samplesPerSegment);
+
+    const n = this.centerline.length;
+    const finishIndex = wrapIndex(definition.finishSampleOffset, n);
+    this.finishGate = this.gateAt(finishIndex);
+
+    this.checkpoints = [];
+    for (let k = 1; k <= definition.checkpointCount; k++) {
+      const idx = finishIndex + Math.round((k * n) / (definition.checkpointCount + 1));
+      this.checkpoints.push(this.gateAt(wrapIndex(idx, n)));
+    }
+
+    const spawnIndex = wrapIndex(finishIndex - definition.spawnSamplesBehind, n);
+    const dir = this.directionAt(spawnIndex);
+    this.spawn = { ...this.centerline[spawnIndex], heading: Math.atan2(dir.y, dir.x) };
+  }
+
+  /** Unit tangent of the centerline at sample i. */
+  directionAt(i: number): Point {
+    const n = this.centerline.length;
+    const a = this.centerline[wrapIndex(i - 1, n)];
+    const b = this.centerline[wrapIndex(i + 1, n)];
+    const len = Math.hypot(b.x - a.x, b.y - a.y) || 1;
+    return { x: (b.x - a.x) / len, y: (b.y - a.y) / len };
+  }
+
+  private gateAt(i: number): Gate {
+    return new Gate(this.centerline[i], this.directionAt(i), this.roadWidth / 2);
+  }
+
+  /** Returns a correction if a circle at (x, y) pokes past the road edge. */
+  resolveBoundary(x: number, y: number, radius: number): CollisionResult | null {
+    const limit = this.roadWidth / 2 - radius;
+    const { distance, point } = nearestOnClosedPolyline(this.centerline, x, y);
+    if (distance <= limit || distance === 0) return null;
+    const ox = (x - point.x) / distance;
+    const oy = (y - point.y) / distance;
+    return { x: point.x + ox * limit, y: point.y + oy * limit, nx: -ox, ny: -oy };
+  }
+}
