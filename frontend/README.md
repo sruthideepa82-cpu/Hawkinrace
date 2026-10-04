@@ -8,7 +8,7 @@ React (app shell + menus) + Phaser 3 (the race) + TypeScript + Vite.
 
 Flow: Intro -> Main Menu -> Character -> Car -> Track -> Mode -> Race -> Results -> Main Menu
 
-Controls: W/Up accelerate, S/Down brake then reverse, A D/Left Right steer, R restart race, Esc back/quit.
+Controls: W/Up accelerate, S/Down brake then reverse, A D/Left Right steer, C cycle camera (chase/hood/map), R restart race, Esc back/quit.
 Key bindings and all handling values live in src/game/config/GameConfig.ts.
 
 ## Layout

@@ -47,6 +47,7 @@ export const CONTROLS = {
   steerLeft: ['A', 'LEFT'],
   steerRight: ['D', 'RIGHT'],
   restart: ['R'],
+  camera: ['C', 'V'],
 } as const;
 
 /** Base car handling. Units: pixels and seconds. Cars scale these via stats. */
@@ -99,8 +100,22 @@ export const RACE = {
 } as const;
 
 export const CAMERA = {
-  zoom: 0.9,
-  lerp: 0.09,
+  /** Frame-rate independent follow smoothing (higher = snappier). */
+  follow: 12,
+  /** Same, for the camera's rotation. */
+  rotateFollow: 10,
+  /**
+   * Camera presets, cycled with CONTROLS.camera.
+   * lookAhead: world px the camera sits ahead of the car (which keeps the car low
+   * in the frame so more road is visible). speedLookAhead: extra px per px/s of
+   * speed, so the view reaches further ahead the faster you drive.
+   * rotate: turn the world with the car so it always faces up the screen.
+   */
+  views: [
+    { name: 'CHASE', lookAhead: 90, speedLookAhead: 0.22, zoom: 1.1, rotate: true },
+    { name: 'HOOD', lookAhead: 40, speedLookAhead: 0.1, zoom: 1.45, rotate: true },
+    { name: 'MAP', lookAhead: 0, speedLookAhead: 0, zoom: 0.7, rotate: false },
+  ],
   /** Forward speed (px/s) above which the camera pulls back for a speed feel. */
   speedThreshold: 400,
   /** Extra zoom-out applied at high speed. */

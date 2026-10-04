@@ -1,4 +1,5 @@
 import { RACE } from '../config/GameConfig';
+import type { Point } from '../config/tracks';
 import type { RaceResult } from '../bridge';
 import { CarPhysics, NO_INPUT, type InputState } from '../entities/CarPhysics';
 import type { TrackLayout } from '../entities/TrackLayout';
@@ -7,6 +8,16 @@ import { RaceManager, type RaceSnapshot } from './RaceManager';
 
 export interface HudData extends RaceSnapshot {
   speedKmh: number;
+}
+
+/** Everything GameScene sends to the HUD each frame. */
+export interface HudPayload extends HudData {
+  /** Car position in world space, for the minimap blip. */
+  playerPos: Point;
+  /** Camera rotation (radians); the minimap is rotated by it to match the screen. */
+  cameraRotation: number;
+  /** Active camera view name, for the HUD label. */
+  view: string;
 }
 
 /**

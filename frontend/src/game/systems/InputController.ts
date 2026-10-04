@@ -32,4 +32,9 @@ export class InputController {
   restartPressed(): boolean {
     return CONTROLS.restart.some((n) => Phaser.Input.Keyboard.JustDown(this.keys[n]));
   }
+
+  /** Cycles the camera between the chase / hood / map views. */
+  cameraPressed(): boolean {
+    return CONTROLS.camera.some((n) => Phaser.Input.Keyboard.JustDown(this.keys[n]));
+  }
 }

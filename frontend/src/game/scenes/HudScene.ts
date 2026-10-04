@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import { getRaceBridge } from '../bridge';
 import { FONTS, GAME, GAME_EVENTS, SCENE_KEYS } from '../config/GameConfig';
-import type { HudData } from '../systems/RaceSession';
+import type { HudPayload } from '../systems/RaceSession';
 import { formatRaceTime } from '../utils/geometry';
 
 import { getTrackDefinition } from '../config/tracks';
@@ -19,9 +19,13 @@ export class HudScene extends Phaser.Scene {
   private bannerTime!: Phaser.GameObjects.Text;
   
   private bridge!: RaceBridge;
+  private minimap!: Phaser.GameObjects.Container;
   private minimapTrack!: Phaser.GameObjects.Graphics;
   private minimapBlip!: Phaser.GameObjects.Arc;
   private minimapScale: number = 1;
+  /** World-space centre the minimap is drawn around. */
+  private trackOrigin = { x: 0, y: 0 };
+  private viewLabel!: Phaser.GameObjects.Text;
 
   constructor() {
     super(SCENE_KEYS.hud);
@@ -52,21 +56,27 @@ export class HudScene extends Phaser.Scene {
     this.add.rectangle(width - 40, height - 60, 200, 20, 0x000000, 0.7).setOrigin(1, 0.5).setStrokeStyle(2, 0xff2e63);
     this.add.rectangle(width - 235, height - 60, 150, 16, 0xff2e63, 1).setOrigin(0, 0.5);
 
-    // Minimap
-    this.add.rectangle(width - 100, 150, 160, 160, 0x000000, 0.5).setStrokeStyle(1, 0x333333);
+    // Minimap. Everything lives in a container so the map can be rotated to
+    // match the camera, which keeps the blip pointing the way the car drives.
+    this.minimap = this.add.container(width - 100, 150);
+    this.minimap.add(this.add.rectangle(0, 0, 160, 160, 0x000000, 0.5).setStrokeStyle(1, 0x333333));
     this.minimapTrack = this.add.graphics();
-    this.minimapBlip = this.add.circle(width - 100, 150, 4, 0xff2e63);
+    this.minimap.add(this.minimapTrack);
+    this.minimapBlip = this.add.circle(0, 0, 4, 0xff2e63);
+    this.minimap.add(this.minimapBlip);
+    this.viewLabel = this.add.text(width - 100, 150 + 92, 'CHASE', { fontFamily: FONTS.mono, fontSize: '12px', color: '#9a94b8' }).setOrigin(0.5);
 
     // Draw track on minimap
     const track = getTrackDefinition(this.bridge.config.trackId);
+    this.trackOrigin = { x: track.worldWidth / 2, y: track.worldHeight / 2 };
     this.minimapScale = 140 / Math.max(track.worldWidth, track.worldHeight);
-    
+
     this.minimapTrack.lineStyle(2, 0xffffff, 0.5);
     this.minimapTrack.beginPath();
     for (let i = 0; i < track.controlPoints.length; i++) {
       const p = track.controlPoints[i];
-      const mx = width - 100 + (p.x - track.worldWidth/2) * this.minimapScale;
-      const my = 150 + (p.y - track.worldHeight/2) * this.minimapScale;
+      const mx = (p.x - this.trackOrigin.x) * this.minimapScale;
+      const my = (p.y - this.trackOrigin.y) * this.minimapScale;
       if (i === 0) this.minimapTrack.moveTo(mx, my);
       else this.minimapTrack.lineTo(mx, my);
     }
@@ -84,17 +94,19 @@ export class HudScene extends Phaser.Scene {
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.game.events.off(GAME_EVENTS.hudUpdate, this.onUpdate, this));
   }
 
-  private onUpdate(data: HudData & { playerPos?: {x: number, y: number} }): void {
+  private onUpdate(data: HudPayload): void {
     this.lapText.setText(`LAP ${data.lap}/${data.totalLaps}`);
     this.timeText.setText(`TIME ${formatRaceTime(data.finalTimeMs ?? data.elapsedMs)}`);
     this.speedText.setText(`${String(data.speedKmh).padStart(3, '0')}`);
 
-    if (data.playerPos) {
-      const track = getTrackDefinition(this.bridge.config.trackId);
-      const mx = GAME.width - 100 + (data.playerPos.x - track.worldWidth/2) * this.minimapScale;
-      const my = 150 + (data.playerPos.y - track.worldHeight/2) * this.minimapScale;
-      this.minimapBlip.setPosition(mx, my);
-    }
+    // Keep the map aligned with the road: rotating it by the camera rotation
+    // means "up" on the minimap is always "up" on screen.
+    this.minimap.setRotation(data.cameraRotation);
+    this.minimapBlip.setPosition(
+      (data.playerPos.x - this.trackOrigin.x) * this.minimapScale,
+      (data.playerPos.y - this.trackOrigin.y) * this.minimapScale
+    );
+    this.viewLabel.setText(data.view);
 
     if (data.state === 'countdown') {
       this.centerText.setText(String(Math.ceil(data.countdownRemainingMs / 1000)));

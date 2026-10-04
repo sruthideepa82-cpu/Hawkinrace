@@ -42,7 +42,7 @@ export function RacePage() {
       <GameCanvas bridge={bridge} />
       <NeonButton variant="ghost" className="quit-btn" onClick={quit}>✕ QUIT</NeonButton>
       <footer className="race-hints">
-        <span>W / ↑ accelerate</span><span>S / ↓ brake · reverse</span><span>A D / ← → steer</span><span>R restart</span><span>ESC quit</span>
+        <span>W / ↑ accelerate</span><span>S / ↓ brake · reverse</span><span>A D / ← → steer</span><span>C camera</span><span>R restart</span><span>ESC quit</span>
       </footer>
     </section>
   );
