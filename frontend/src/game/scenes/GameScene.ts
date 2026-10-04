@@ -34,7 +34,7 @@ export class GameScene extends Phaser.Scene {
     const layout = new TrackLayout(getTrackDefinition(this.bridge.config.trackId));
     new TrackRenderer(this, layout);
 
-    this.playerCar = new PlayerCar(this, this.bridge.config.car);
+    this.playerCar = new PlayerCar(this, this.bridge.config.car, layout.worldWidth, layout.worldHeight);
     this.session = new RaceSession(layout, this.playerCar.physics);
     this.inputController = new InputController(this);
 
@@ -57,18 +57,32 @@ export class GameScene extends Phaser.Scene {
     }
 
     this.accumulator += Math.min(deltaMs / 1000, MAX_FRAME_SECONDS);
+    const input = this.inputController.read();
     while (this.accumulator >= PHYSICS_STEP) {
-      this.session.step(PHYSICS_STEP, this.inputController.read());
+      this.session.step(PHYSICS_STEP, input);
       this.accumulator -= PHYSICS_STEP;
     }
 
-    this.playerCar.sync();
+    const speed = this.playerCar.physics.speed;
+    this.playerCar.sync(input.brake, input.accelerate, speed);
+    
+    // Camera effects
+    const cam = this.cameras.main;
+    if (speed > 400) {
+      cam.setZoom(CAMERA.zoom - 0.05); // Zoom out slightly at high speed
+      cam.shake(100, 0.001); // Subtle high-speed shake
+    } else {
+      cam.setZoom(CAMERA.zoom);
+    }
     
     const hud = this.session.hudData();
     if (this.previousState === 'countdown' && hud.state === 'racing') {
-      this.cameras.main.flash(500, 255, 255, 255);
+      cam.flash(500, 255, 255, 255);
     }
     this.previousState = hud.state;
+
+    // We can also add map data to hud here for the minimap
+    (hud as any).playerPos = { x: this.playerCar.physics.x, y: this.playerCar.physics.y };
 
     this.game.events.emit(GAME_EVENTS.hudUpdate, hud);
     this.reportResultOnce();
