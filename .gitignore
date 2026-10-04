@@ -1,0 +1,19 @@
+# Dependencies (reinstalled with `npm install`)
+node_modules/
+
+# Build/tooling caches
+*.tsbuildinfo
+.vite/
+
+# Logs
+*.log
+npm-debug.log*
+
+# Editor / OS noise
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Note: frontend/dist is intentionally tracked so the built game ships with the
+# source. Do not add `dist/` here.
