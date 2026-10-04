@@ -46,6 +46,7 @@ export const CONTROLS = {
   brake: ['S', 'DOWN'],
   steerLeft: ['A', 'LEFT'],
   steerRight: ['D', 'RIGHT'],
+  nitro: ['SHIFT', 'SPACE'],
   restart: ['R'],
   camera: ['C', 'V'],
 } as const;

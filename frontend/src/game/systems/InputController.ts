@@ -26,6 +26,7 @@ export class InputController {
       accelerate: this.anyDown(CONTROLS.accelerate),
       brake: this.anyDown(CONTROLS.brake),
       steer: (right ? 1 : 0) - (left ? 1 : 0),
+      nitro: this.anyDown(CONTROLS.nitro),
     };
   }
 

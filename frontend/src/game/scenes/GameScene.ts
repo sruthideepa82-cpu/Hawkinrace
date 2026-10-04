@@ -2,12 +2,16 @@ import Phaser from 'phaser';
 import { getRaceBridge, type RaceBridge } from '../bridge';
 import { GAME_EVENTS, SCENE_KEYS } from '../config/GameConfig';
 import { getTrackDefinition } from '../config/tracks';
+import { buildGrid } from '../config/racers';
 import { CameraRig } from '../entities/CameraRig';
 import { PlayerCar } from '../entities/PlayerCar';
+import { AiCarView } from '../entities/CarView';
 import { TrackLayout } from '../entities/TrackLayout';
 import { TrackRenderer } from '../entities/TrackRenderer';
 import { InputController } from '../systems/InputController';
-import { RaceSession } from '../systems/RaceSession';
+import { RaceSession, type Racer } from '../systems/RaceSession';
+import { CHARACTERS } from '../../data/characters';
+import { CARS } from '../../data/cars';
 
 const PHYSICS_STEP = 1 / 120;
 const MAX_FRAME_SECONDS = 0.05;
@@ -18,6 +22,7 @@ export class GameScene extends Phaser.Scene {
   private bridge!: RaceBridge;
   private session!: RaceSession;
   private playerCar!: PlayerCar;
+  private aiViews = new Map<Racer, AiCarView>();
   private cameraRig!: CameraRig;
   private inputController!: InputController;
   private accumulator = 0;
@@ -34,63 +39,31 @@ export class GameScene extends Phaser.Scene {
     this.resultReported = false;
     this.accumulator = 0;
     this.previousState = 'countdown';
+    this.aiViews.clear();
 
     const layout = new TrackLayout(getTrackDefinition(this.bridge.config.trackId));
     new TrackRenderer(this, layout);
 
-    this.playerCar = new PlayerCar(this, this.bridge.config.car, layout.worldWidth, layout.worldHeight);
-    this.session = new RaceSession(layout, this.playerCar.physics);
+    // The player keeps the driver and car they picked; the AI field is built
+    // around them from the drivers and cars they did not choose.
+    const character = CHARACTERS.find((c) => c.id === this.bridge.config.characterId) ?? CHARACTERS[0];
+    const car = CARS.find((c) => c.id === this.bridge.config.car.id) ?? CARS[0];
+    const grid = buildGrid(character, car);
+    const playerConfig = grid.find((g) => g.isPlayer)!;
+    const aiConfigs = grid.filter((g) => !g.isPlayer);
+
+    this.session = new RaceSession(layout, grid);
+    this.playerCar = new PlayerCar(this, playerConfig, layout.worldWidth, layout.worldHeight);
+    for (const config of aiConfigs) {
+      const racer = this.session.racers.find((r) => r.config === config);
+      if (racer) this.aiViews.set(racer, new AiCarView(this, config));
+    }
     this.inputController = new InputController(this);
 
-    this.playerCar.sync();
+    this.playerCar.sync(this.session.player.physics, {});
     const cam = this.cameras.main;
     cam.setBounds(0, 0, layout.worldWidth, layout.worldHeight);
     cam.setBackgroundColor(0x07060d);
-
-    const DEBUG_COLLISION = false;
-    if (DEBUG_COLLISION) {
-      const g = this.add.graphics();
-      g.setDepth(999);
-      
-      // RED: non-drivable area
-      g.fillStyle(0xff0000, 0.3);
-      g.fillRect(0, 0, layout.worldWidth, layout.worldHeight);
-      
-      // GREEN: drivable area (road + sidewalk = roadWidth / 2 + 40)
-      g.lineStyle(layout.roadWidth + 80, 0x00ff00, 0.4);
-      g.beginPath();
-      layout.centerline.forEach((p, i) => {
-        if (i === 0) g.moveTo(p.x, p.y);
-        else g.lineTo(p.x, p.y);
-      });
-      g.closePath();
-      g.strokePath();
-
-      // YELLOW: collision objects / boundaries
-      // Let's draw the hard boundary edge
-      g.lineStyle(2, 0xffff00, 1);
-      const half = layout.roadWidth / 2;
-      const hardLimit = half + 40;
-      
-      // Inner/Outer offsets (approximate for visualization)
-      const drawOffsetLine = (offset: number) => {
-        g.beginPath();
-        layout.centerline.forEach((p, i) => {
-          const dir = layout.directionAt(i);
-          const nx = -dir.y;
-          const ny = dir.x;
-          const px = p.x + nx * offset;
-          const py = p.y + ny * offset;
-          if (i === 0) g.moveTo(px, py);
-          else g.lineTo(px, py);
-        });
-        g.closePath();
-        g.strokePath();
-      };
-      
-      drawOffsetLine(hardLimit);
-      drawOffsetLine(-hardLimit);
-    }
 
     // Weather Effects
     if (this.bridge.config.trackId === 'hawkins-streets') {
@@ -146,7 +119,7 @@ export class GameScene extends Phaser.Scene {
 
     // Chase camera: sits ahead of the car and turns with it (see CameraRig).
     this.cameraRig = new CameraRig(cam);
-    this.cameraRig.snap(this.playerCar.physics);
+    this.cameraRig.snap(this.session.player.physics);
 
     // HUD lives in its own scene, layered above the world.
     if (!this.scene.isActive(SCENE_KEYS.hud)) this.scene.launch(SCENE_KEYS.hud);
@@ -166,16 +139,31 @@ export class GameScene extends Phaser.Scene {
       this.accumulator -= PHYSICS_STEP;
     }
 
-    const speed = this.playerCar.physics.speed;
-    this.playerCar.sync(input.brake, input.accelerate, speed);
-    
-    // Anti-gravity twist logic (only if not finished)
-    let twist = 0;
-    if (this.session.race.snapshot().state !== 'finished') {
-      twist = this.session.layout.getAntiGravityTwist(this.playerCar.physics.x, this.playerCar.physics.y);
+    // 1. Player view: full effects.
+    const player = this.session.player;
+    const speed = player.physics.speed;
+    const racing = this.session.race.isRacing;
+    this.playerCar.sync(player.physics, {
+      braking: racing && input.brake,
+      accelerating: racing && input.accelerate,
+      speed,
+      boosting: racing && input.nitro && player.nitro.active,
+    });
+
+    // 2. Opponent views. The camera stays locked to the player, so rivals simply
+    //    render wherever they physically are.
+    for (const [racer, view] of this.aiViews) {
+      view.sync(racer.physics, { braking: racer.nitro.active === false && racer.physics.forwardSpeed < 40, boosting: racer.nitro.active });
     }
-    
-    this.cameraRig.update(this.playerCar.physics, speed, deltaMs, twist);
+
+    // Anti-gravity twist logic. Only the player's view drives it, and only while
+    // the race is live, so a finished car stops rolling the camera.
+    let twist = 0;
+    if (!this.session.race.isFinished) {
+      twist = this.session.layout.getAntiGravityTwist(player.physics.x, player.physics.y);
+    }
+
+    this.cameraRig.update(player.physics, speed, deltaMs, twist);
 
     if (this.rainEmitter) {
       this.rainEmitter.setPosition(this.cameras.main.scrollX + this.cameras.main.width / 2, this.cameras.main.scrollY);
@@ -194,19 +182,22 @@ export class GameScene extends Phaser.Scene {
 
     this.game.events.emit(GAME_EVENTS.hudUpdate, {
       ...hud,
-      playerPos: { x: this.playerCar.physics.x, y: this.playerCar.physics.y },
+      playerPos: { x: player.physics.x, y: player.physics.y },
+      rivalPos: this.session.racers
+        .filter((r) => !r.isPlayer)
+        .map((r) => ({ x: r.physics.x, y: r.physics.y, color: r.config.color })),
       cameraRotation: this.cameraRig.screenRotation,
       view: this.cameraRig.viewName,
     });
   }
 
+  /**
+   * Called only once EVERY car has finished, so the race never ends early just
+   * because the player crossed the line first.
+   */
   private finishRace(): void {
     if (this.resultReported) return;
     this.resultReported = true;
-
-    // Stop player controls and movement immediately
-    this.playerCar.physics.vx = 0;
-    this.playerCar.physics.vy = 0;
 
     const result = this.session.result();
     if (result) {

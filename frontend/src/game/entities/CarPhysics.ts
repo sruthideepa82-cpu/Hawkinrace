@@ -5,9 +5,11 @@ export interface InputState {
   brake: boolean;
   /** -1 = left, 0 = straight, 1 = right */
   steer: number;
+  /** True while the driver wants the nitro boost. */
+  nitro: boolean;
 }
 
-export const NO_INPUT: InputState = { accelerate: false, brake: false, steer: 0 };
+export const NO_INPUT: InputState = { accelerate: false, brake: false, steer: 0, nitro: false };
 
 export interface CollisionResult {
   x: number;
@@ -19,6 +21,8 @@ export interface CollisionResult {
 
 const approach = (value: number, target: number, maxDelta: number): number =>
   value < target ? Math.min(value + maxDelta, target) : Math.max(value - maxDelta, target);
+
+const clamp01 = (value: number): number => (value < 0 ? 0 : value > 1 ? 1 : value);
 
 /**
  * Pure arcade car dynamics (no Phaser). Heading 0 faces +x; y grows downward.
@@ -54,7 +58,11 @@ export class CarPhysics {
     return Math.hypot(this.vx, this.vy);
   }
 
-  step(dt: number, input: InputState, dragMultiplier: number = 1): void {
+  /**
+   * @param dragMultiplier surface penalty (1 = road).
+   * @param nitro 0..1 how hard the boost is currently applied.
+   */
+  step(dt: number, input: InputState, dragMultiplier: number = 1, nitro: number = 0): void {
     const t = this.tuning;
 
     // 1. Steering smoothing
@@ -65,17 +73,19 @@ export class CarPhysics {
     // 2. Speed-based Steering
     const fwd0 = this.forwardSpeed;
     const abs0 = Math.abs(fwd0);
-    
-    // Steering is weak at low speeds, responsive at mid, and requires more control at top speed
+
+    // Weak at a standstill, full authority through the mid range, faded at top
+    // speed. The low-speed floor matters: a car pressed nose-first into a wall has
+    // all of its speed killed, and without any authority it could never rotate off
+    // the wall and would be stuck for good.
     let steerAuthority = 0;
-    if (abs0 > 5) {
+    if (abs0 > 0.5) {
       const peakSpeed = t.maxSpeed * 0.4;
-      if (abs0 <= peakSpeed) {
-        steerAuthority = abs0 / peakSpeed; // Ramps up
-      } else {
-        // Slowly fades out at very high speeds, keeping a minimum authority of 50%
-        steerAuthority = 1.0 - 0.5 * ((abs0 - peakSpeed) / (t.maxSpeed - peakSpeed));
-      }
+      const lowSpeedRamp = 0.4 + 0.6 * Math.min(1, abs0 / peakSpeed);
+      const topFade = abs0 <= peakSpeed
+        ? 0
+        : 0.5 * Math.min(1, (abs0 - peakSpeed) / (t.maxSpeed - peakSpeed));
+      steerAuthority = lowSpeedRamp * (1 - topFade);
     }
     
     // Reverse steering flips direction naturally since the car moves backwards
@@ -97,7 +107,8 @@ export class CarPhysics {
       } else {
         // Progressive acceleration (weaker near max speed)
         const ratio = Math.min(fwd / t.maxSpeed, 1);
-        fwd += t.acceleration * (1 - ratio * ratio * 0.8) * dt * (1 / dragMultiplier);
+        const boost = 1 + (t.nitroAccelBoost - 1) * clamp01(nitro);
+        fwd += t.acceleration * boost * (1 - ratio * ratio * 0.8) * dt * (1 / dragMultiplier);
       }
     } else if (input.brake) {
       // Strong intentional braking
@@ -117,8 +128,9 @@ export class CarPhysics {
       }
     }
     
-    // Off-road affects top speed too
-    const effectiveMaxSpeed = t.maxSpeed / Math.sqrt(dragMultiplier);
+    // Off-road affects top speed too; nitro raises the ceiling.
+    const nitroSpeed = 1 + (t.nitroSpeedBoost - 1) * clamp01(nitro);
+    const effectiveMaxSpeed = (t.maxSpeed * nitroSpeed) / Math.sqrt(dragMultiplier);
     fwd = Math.max(-t.maxReverseSpeed, Math.min(effectiveMaxSpeed, fwd));
 
     // 5. Drift / Lateral sliding
