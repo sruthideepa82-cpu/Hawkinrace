@@ -24,27 +24,27 @@ export interface TrackDefinition {
 export const HAWKINS_STREETS: TrackDefinition = {
   id: 'hawkins-streets',
   name: 'Hawkins Streets',
-  worldWidth: 2700,
-  worldHeight: 1900,
-  roadWidth: 200,
+  worldWidth: 3600,
+  worldHeight: 2800,
+  roadWidth: 220, // slightly wider for town streets
   controlPoints: [
-    { x: 900, y: 1450 },
-    { x: 1500, y: 1450 },
-    { x: 2050, y: 1420 },
-    { x: 2350, y: 1150 },
-    { x: 2300, y: 780 },
-    { x: 1950, y: 560 },
-    { x: 1550, y: 620 },
-    { x: 1300, y: 850 },
-    { x: 950, y: 900 },
-    { x: 650, y: 700 },
-    { x: 400, y: 850 },
-    { x: 350, y: 1200 },
-    { x: 550, y: 1420 },
+    { x: 1800, y: 2400 }, // Start/finish
+    { x: 1000, y: 2400 }, // Main straight
+    { x: 500, y: 2000 },  // 90 right (North)
+    { x: 500, y: 1200 },  // Downtown
+    { x: 700, y: 700 },   // Curving East
+    { x: 1200, y: 600 },  // Intersection
+    { x: 1600, y: 400 },  // Curving North-East
+    { x: 2200, y: 400 },  // Long straight (East)
+    { x: 2800, y: 500 },  // Residential
+    { x: 3100, y: 1000 }, // Tight right (South)
+    { x: 3100, y: 1600 }, // South straight
+    { x: 2600, y: 2200 }, // Final curve
+    { x: 2200, y: 2400 }  
   ],
-  samplesPerSegment: 24,
-  finishSampleOffset: 30,
-  spawnSamplesBehind: 7,
+  samplesPerSegment: 32, // More samples for smoother curves on a larger track
+  finishSampleOffset: 20,
+  spawnSamplesBehind: 12,
   checkpointCount: 4,
 };
 

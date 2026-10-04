@@ -17,63 +17,78 @@ export class TrackRenderer {
     const half = roadWidth / 2;
     const g = scene.add.graphics();
 
-    // 1. Base Environment: Dark navy/purple night
     g.fillStyle(0x05040a).fillRect(0, 0, W, H);
     let seed = 1337;
     const rand = () => ((seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296);
 
-    // Track sections based on X/Y (roughly matching the shape)
-    const isForest = (x: number, y: number) => x > 1800 || y < 600;
-    const isTown = (x: number, y: number) => !isForest(x, y);
+    const getZone = (x: number, y: number): 'downtown' | 'residential' | 'edge' => {
+      if (x < 2000 && y > 1000) return 'downtown';
+      if (x > 2400) return 'residential';
+      return 'edge';
+    };
 
-    // 2. Draw Environment Background (Houses, Trees, Fog)
     const drawTree = (x: number, y: number) => {
-      g.fillStyle(0x02030a, 0.9); // Dark blue-black trees
+      g.fillStyle(0x02030a, 0.9);
       g.fillCircle(x, y, 25 + rand() * 20);
-      g.fillStyle(0x0a0c1a, 0.9); // Slight moonlight highlight
+      g.fillStyle(0x0a0c1a, 0.9);
       g.fillCircle(x + 5, y + 5, 15 + rand() * 15);
     };
 
-    const drawBuilding = (x: number, y: number, facingRight: boolean) => {
+    const drawBush = (x: number, y: number) => {
+      g.fillStyle(0x03050c, 0.9);
+      g.fillCircle(x, y, 10 + rand() * 10);
+    };
+
+    const drawShop = (x: number, y: number, facingRight: boolean) => {
       const w = 80 + rand() * 40;
       const h = 60 + rand() * 30;
-      
-      // Building base
       g.fillStyle(0x110b1a).fillRect(x - w/2, y - h/2, w, h);
-      g.fillStyle(0x09050d).fillRect(x - w/2 + 5, y - h/2 + 5, w - 10, h - 10); // Roof
-
-      // Neon storefront glow
-      const neonColor = rand() > 0.5 ? 0xff2a5f : 0x00f0ff; // Pink or Cyan
+      g.fillStyle(0x09050d).fillRect(x - w/2 + 5, y - h/2 + 5, w - 10, h - 10);
+      const neonColor = rand() > 0.5 ? 0xff2a5f : 0x00f0ff;
       const glowDir = facingRight ? w/2 : -w/2;
-      
-      // Glowing windows/signs
       g.fillStyle(neonColor, 0.8).fillRect(x + glowDir - (facingRight ? 5 : 0), y - 10, 5, 20);
-      g.fillStyle(neonColor, 0.1).fillCircle(x + glowDir, y, 60); // Light pool
+      g.fillStyle(neonColor, 0.1).fillCircle(x + glowDir, y, 60);
+    };
+
+    const drawHouse = (x: number, y: number, facingRight: boolean) => {
+      const w = 70 + rand() * 20;
+      const h = 50 + rand() * 15;
+      g.fillStyle(0x1a1525).fillRect(x - w/2, y - h/2, w, h);
+      g.fillStyle(0x110d18).fillRect(x - w/2 + 5, y - h/2 + 5, w - 10, h - 10);
+      const driveDir = facingRight ? w/2 + 10 : -w/2 - 30;
+      g.fillStyle(0x0a0a0f).fillRect(x + driveDir, y, 20, 40); // Driveway
+      const porchColor = 0xffb02e;
+      g.fillStyle(porchColor, 0.6).fillCircle(x + (facingRight ? w/2 : -w/2), y, 5); // Porch light
+      g.fillStyle(porchColor, 0.1).fillCircle(x + (facingRight ? w/2 : -w/2), y, 40);
+      if (rand() > 0.5) {
+        g.lineStyle(2, 0x111111);
+        g.strokeRect(x - w/2 - 10, y - h/2 - 10, w + 20, h + 20); // Fence
+      }
     };
 
     const drawWaterTower = (x: number, y: number) => {
-      g.fillStyle(0x05030a).fillRect(x - 15, y - 120, 30, 120); // Pillar
-      g.fillStyle(0x0f0b1a).fillEllipse(x, y - 130, 120, 50); // Tank
-      g.fillStyle(0xff0000, 0.8).fillCircle(x, y - 160, 5); // Red beacon
-      g.fillStyle(0xff0000, 0.2).fillCircle(x, y - 160, 30); // Glow
+      g.fillStyle(0x05030a).fillRect(x - 15, y - 120, 30, 120);
+      g.fillStyle(0x0f0b1a).fillEllipse(x, y - 130, 120, 50);
+      g.fillStyle(0xff0000, 0.8).fillCircle(x, y - 160, 5);
+      g.fillStyle(0xff0000, 0.2).fillCircle(x, y - 160, 30);
     };
 
     const drawParkedCar = (x: number, y: number, angle: number) => {
       const w = 40, h = 20;
-      g.fillStyle(0x221133); // Dark silhouette
+      g.fillStyle(0x221133);
       const c = Math.cos(angle), s = Math.sin(angle);
       const hw = w/2, hh = h/2;
       g.fillPoints([{ x: x + hw*c - hh*s, y: y + hw*s + hh*c }, { x: x - hw*c - hh*s, y: y - hw*s + hh*c }, { x: x - hw*c + hh*s, y: y - hw*s - hh*c }, { x: x + hw*c + hh*s, y: y + hw*s - hh*c }], true);
     };
 
     const drawStreetLamp = (x: number, y: number) => {
-      g.fillStyle(0x111111).fillCircle(x, y, 6); // Post
-      g.fillStyle(0xff2a5f, 0.15).fillCircle(x, y, 100); // Neon pink light pool
-      g.fillStyle(0xff2a5f, 0.6).fillCircle(x, y, 5); // Bulb
+      g.fillStyle(0x111111).fillCircle(x, y, 6);
+      g.fillStyle(0xff2a5f, 0.15).fillCircle(x, y, 100);
+      g.fillStyle(0xff2a5f, 0.6).fillCircle(x, y, 5);
     };
 
-    // Scatter background elements
-    for (let i = 0; i < 1500; i++) {
+    // Environment Scatter
+    for (let i = 0; i < 2000; i++) {
       const px = rand() * W, py = rand() * H;
       let distToRoad = 9999;
       for (const p of centerline) {
@@ -81,43 +96,47 @@ export class TrackRenderer {
         if (d < distToRoad) distToRoad = d;
       }
       
-      if (distToRoad > half + 100) { // Off road
-        if (isForest(px, py) || rand() < 0.4) drawTree(px, py);
-        else if (distToRoad < half + 300) drawBuilding(px, py, px < 1350); // Buildings face road roughly
+      if (distToRoad > half + 100) {
+        const zone = getZone(px, py);
+        if (zone === 'downtown') {
+          if (distToRoad < half + 300) drawShop(px, py, px < W/2);
+          else if (rand() < 0.2) drawTree(px, py);
+        } else if (zone === 'residential') {
+          if (distToRoad < half + 250) drawHouse(px, py, px < W/2);
+          else if (rand() < 0.5) drawTree(px, py);
+        } else {
+          // Edge / Forest
+          if (rand() < 0.7) drawTree(px, py);
+          else drawBush(px, py);
+        }
       }
     }
 
-    // Place Water Tower in a specific spot visible from main street
-    drawWaterTower(1400, 250);
+    // Place Water Tower in Edge zone
+    drawWaterTower(1400, 900);
 
-    // 3. Draw Road (Wet Asphalt)
+    // 3. Draw Road
     const stamp = (radius: number, color: number, alpha = 1) => {
       g.fillStyle(color, alpha);
       for (const p of centerline) g.fillCircle(p.x, p.y, radius);
     };
     
-    // Sidewalk / Road edge
-    stamp(half + 40, 0x110c1f, 1.0); // Sidewalk concrete
-    stamp(half + 5, 0x2a1c40, 1.0);  // Curb highlight
-    stamp(half, 0x0a0a0f, 1.0);      // Dark wet asphalt
+    stamp(half + 40, 0x110c1f, 1.0); // Sidewalk
+    stamp(half + 5, 0x2a1c40, 1.0);  // Curb
+    stamp(half, 0x0a0a0f, 1.0);      // Asphalt
     
-    // Wet road reflections
+    // Road wear / puddles
     for (const p of centerline) {
       if (rand() < 0.3) {
-        const rw = rand() * 80 + 40;
-        const rh = rand() * 40 + 20;
-        g.fillStyle(0x161622, 0.4).fillEllipse(p.x + (rand()-0.5)*half, p.y + (rand()-0.5)*half, rw, rh);
+        g.fillStyle(0x161622, 0.4).fillEllipse(p.x + (rand()-0.5)*half, p.y + (rand()-0.5)*half, rand()*80+40, rand()*40+20);
+      }
+      const zone = getZone(p.x, p.y);
+      if (zone === 'downtown' && rand() < 0.15) {
+        g.fillStyle(0xff2a5f, 0.1).fillEllipse(p.x, p.y, 120, 40); // Neon reflections
       }
     }
 
-    // Neon reflections on wet patches
-    for (const p of centerline) {
-      if (isTown(p.x, p.y) && rand() < 0.15) {
-        g.fillStyle(0xff2a5f, 0.1).fillEllipse(p.x, p.y, 120, 40);
-      }
-    }
-
-    // Yellow Center Lines
+    // Center lines
     g.lineStyle(4, 0xcc9900, 0.6);
     for (let i = 0; i < centerline.length; i++) {
       if (Math.floor(i / 3) % 2 !== 0) continue;
@@ -125,41 +144,90 @@ export class TrackRenderer {
       g.lineBetween(a.x, a.y, b.x, b.y);
     }
 
-    // 4. Props along the road (Lamps, Poles)
+    // 4. Props along road edge
     const poles: Point[] = [];
-    
-    for (let i = 0; i < centerline.length; i += 10) {
+    for (let i = 0; i < centerline.length; i += 12) {
       const p = centerline[i];
       const next = centerline[(i + 1) % centerline.length];
       const dx = next.x - p.x, dy = next.y - p.y;
       const len = Math.sqrt(dx * dx + dy * dy);
       const nx = -dy / len, ny = dx / len;
-      const side = (i % 20 === 0) ? 1 : -1;
+      const side = (i % 24 === 0) ? 1 : -1;
       const ox = p.x + nx * (half + 25) * side;
       const oy = p.y + ny * (half + 25) * side;
 
-      if (isTown(p.x, p.y)) {
-        if (rand() < 0.25) {
+      const zone = getZone(p.x, p.y);
+      
+      if (zone === 'downtown') {
+        if (rand() < 0.3) {
           drawStreetLamp(ox, oy);
-          if (rand() < 0.5) drawParkedCar(ox - nx * 10, oy - ny * 10, Math.atan2(dy, dx));
+          if (rand() < 0.6) drawParkedCar(ox - nx * 15, oy - ny * 15, Math.atan2(dy, dx));
         } else if (rand() < 0.2) {
           poles.push({ x: ox, y: oy });
-          g.fillStyle(0x050505).fillCircle(ox, oy, 4); // Telephone pole
+          g.fillStyle(0x050505).fillCircle(ox, oy, 4);
+        }
+      } else if (zone === 'residential') {
+        if (rand() < 0.2) {
+          drawStreetLamp(ox, oy);
+        } else if (rand() < 0.4) {
+          g.fillStyle(0x442211).fillRect(ox - 2, oy - 2, 4, 10); // Mailbox
         }
       } else {
-        if (rand() < 0.6) drawTree(ox + nx * 20 * side, oy + ny * 20 * side);
+        if (rand() < 0.2) {
+          poles.push({ x: ox, y: oy });
+          g.fillStyle(0x050505).fillCircle(ox, oy, 4);
+        } else if (rand() < 0.5) {
+          drawBush(ox, oy);
+        }
       }
     }
 
-    // Draw overhead wires connecting poles
+    // Wires
     g.lineStyle(1, 0x000000, 0.6);
     for (let i = 0; i < poles.length - 1; i++) {
-      if (Math.hypot(poles[i].x - poles[i+1].x, poles[i].y - poles[i+1].y) < 300) {
+      if (Math.hypot(poles[i].x - poles[i+1].x, poles[i].y - poles[i+1].y) < 400) {
         g.lineBetween(poles[i].x, poles[i].y, poles[i+1].x, poles[i+1].y);
       }
     }
 
-    // 5. Start/Finish Line
+    // Start Grid Area
+    const { center: startP, direction: startDir, normal: startNorm } = layout.finishGate;
+    
+    // Helper to get point on start line grid
+    const getGridPos = (forwardOffset: number, sideOffset: number) => ({
+      x: startP.x + startDir.x * forwardOffset + startNorm.x * sideOffset,
+      y: startP.y + startDir.y * forwardOffset + startNorm.y * sideOffset
+    });
+
+    g.fillStyle(0xffffff, 0.8);
+    // Draw thick white line exactly at the gate
+    g.fillPoints([
+      getGridPos(-4, -half), getGridPos(4, -half),
+      getGridPos(4, half), getGridPos(-4, half)
+    ], true);
+    
+    // Draw starting slots
+    g.lineStyle(2, 0xffffff, 0.5);
+    for (let grid = 1; grid <= 4; grid++) {
+      // Cars spawn backwards from the finish line
+      const backOffset = -grid * 120;
+      // Stagger them slightly left and right
+      const sideOffset = (grid % 2 === 0) ? -40 : 40;
+      
+      const p1 = getGridPos(backOffset, sideOffset - 20);
+      const p2 = getGridPos(backOffset + 80, sideOffset - 20);
+      const p3 = getGridPos(backOffset + 80, sideOffset + 20);
+      const p4 = getGridPos(backOffset, sideOffset + 20);
+      
+      g.beginPath();
+      g.moveTo(p1.x, p1.y);
+      g.lineTo(p2.x, p2.y);
+      g.lineTo(p3.x, p3.y);
+      g.lineTo(p4.x, p4.y);
+      g.closePath();
+      g.strokePath();
+    }
+
     TrackRenderer.drawFinishLine(g, layout);
 
     g.generateTexture(TRACK_TEXTURE, W, H);

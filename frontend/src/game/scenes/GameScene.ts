@@ -47,6 +47,51 @@ export class GameScene extends Phaser.Scene {
     cam.setBounds(0, 0, layout.worldWidth, layout.worldHeight);
     cam.setBackgroundColor(0x07060d);
 
+    const DEBUG_COLLISION = false;
+    if (DEBUG_COLLISION) {
+      const g = this.add.graphics();
+      g.setDepth(999);
+      
+      // RED: non-drivable area
+      g.fillStyle(0xff0000, 0.3);
+      g.fillRect(0, 0, layout.worldWidth, layout.worldHeight);
+      
+      // GREEN: drivable area (road + sidewalk = roadWidth / 2 + 40)
+      g.lineStyle(layout.roadWidth + 80, 0x00ff00, 0.4);
+      g.beginPath();
+      layout.centerline.forEach((p, i) => {
+        if (i === 0) g.moveTo(p.x, p.y);
+        else g.lineTo(p.x, p.y);
+      });
+      g.closePath();
+      g.strokePath();
+
+      // YELLOW: collision objects / boundaries
+      // Let's draw the hard boundary edge
+      g.lineStyle(2, 0xffff00, 1);
+      const half = layout.roadWidth / 2;
+      const hardLimit = half + 40;
+      
+      // Inner/Outer offsets (approximate for visualization)
+      const drawOffsetLine = (offset: number) => {
+        g.beginPath();
+        layout.centerline.forEach((p, i) => {
+          const dir = layout.directionAt(i);
+          const nx = -dir.y;
+          const ny = dir.x;
+          const px = p.x + nx * offset;
+          const py = p.y + ny * offset;
+          if (i === 0) g.moveTo(px, py);
+          else g.lineTo(px, py);
+        });
+        g.closePath();
+        g.strokePath();
+      };
+      
+      drawOffsetLine(hardLimit);
+      drawOffsetLine(-hardLimit);
+    }
+
     // Weather Effects
     if (this.bridge.config.trackId === 'hawkins-streets') {
       // Generate rain texture

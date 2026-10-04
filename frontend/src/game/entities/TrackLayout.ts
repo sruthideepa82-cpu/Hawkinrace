@@ -55,7 +55,8 @@ export class TrackLayout {
   }
 
   private gateAt(i: number): Gate {
-    return new Gate(this.centerline[i], this.directionAt(i), this.roadWidth / 2);
+    // Make gates wide enough to cover the sidewalks and edge tolerances
+    return new Gate(this.centerline[i], this.directionAt(i), this.roadWidth / 2 + 80);
   }
 
   getSurface(x: number, y: number): SurfaceData {
@@ -68,8 +69,9 @@ export class TrackLayout {
 
   /** Returns a correction if a circle at (x, y) hits a hard boundary (buildings/fences). */
   resolveBoundary(x: number, y: number, radius: number): CollisionResult | null {
-    // Hard limit is where buildings and fences are placed
-    const hardLimit = (this.roadWidth / 2) + 100 - radius;
+    // Hard limit is the outer edge of the sidewalk
+    const half = this.roadWidth / 2;
+    const hardLimit = half + 40 - radius;
     const { distance, point } = nearestOnClosedPolyline(this.centerline, x, y);
     if (distance <= hardLimit || distance === 0) return null;
     const ox = (x - point.x) / distance;
