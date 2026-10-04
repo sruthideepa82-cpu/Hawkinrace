@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import type { RaceCarConfig } from '../bridge';
 import { createCarTuning } from '../config/carTuning';
-import { CAR, COLORS } from '../config/GameConfig';
+import { CAR } from '../config/GameConfig';
 import { CarPhysics } from './CarPhysics';
 
 /** Phaser view of the player's car. Swap the texture for artwork later. */
@@ -20,12 +20,39 @@ export class PlayerCar {
     if (scene.textures.exists(key)) return key;
     const { width: w, height: h } = CAR;
     const g = scene.add.graphics();
-    g.fillStyle(color).fillRoundedRect(0, 0, w, h, 6);
-    g.fillStyle(COLORS.carAccent).fillRect(w * 0.68, h * 0.4, w * 0.3, h * 0.2);
-    g.fillStyle(COLORS.carWindow).fillRoundedRect(w * 0.3, 3, w * 0.34, h - 6, 3);
-    g.fillStyle(0xfff2b0).fillRect(w - 4, 3, 4, 5).fillRect(w - 4, h - 8, 4, 5);
-    g.fillStyle(0x7a0f2a).fillRect(0, 3, 3, 5).fillRect(0, h - 8, 3, 5);
-    g.generateTexture(key, w, h);
+    
+    const pad = 10;
+    
+    // Shadow
+    g.fillStyle(0x000000, 0.6).fillRoundedRect(pad - 4, pad + 4, w + 8, h + 8, 8);
+
+    // Body glow
+    g.fillStyle(color, 0.3).fillRoundedRect(pad - 5, pad - 5, w + 10, h + 10, 10);
+    
+    // Wheels
+    g.fillStyle(0x111111);
+    g.fillRoundedRect(pad + w * 0.15, pad - 2, w * 0.2, h + 4, 2);
+    g.fillRoundedRect(pad + w * 0.65, pad - 2, w * 0.2, h + 4, 2);
+
+    // Main Body
+    g.fillStyle(color).fillRoundedRect(pad, pad, w, h, 8);
+    // Roof/Hood accents
+    g.fillStyle(0x000000, 0.2).fillRect(pad + w * 0.2, pad, w * 0.6, h);
+    
+    // Windshield & Rear Window
+    g.fillStyle(0x050505).fillRoundedRect(pad + w * 0.45, pad + 2, w * 0.2, h - 4, 2); // Windshield
+    g.fillRoundedRect(pad + w * 0.15, pad + 4, w * 0.1, h - 8, 2); // Rear Window
+
+    // Headlights (glow + bulb)
+    g.fillStyle(0xfff2b0, 0.5).fillCircle(pad + w, pad + h * 0.2, 10).fillCircle(pad + w, pad + h * 0.8, 10);
+    g.fillStyle(0xffffff).fillRect(pad + w - 4, pad + h * 0.15, 4, h * 0.15).fillRect(pad + w - 4, pad + h * 0.7, 4, h * 0.15);
+    
+    // Taillights (glow + bulb)
+    g.fillStyle(0xff0000, 0.6).fillCircle(pad, pad + h * 0.2, 8).fillCircle(pad, pad + h * 0.8, 8);
+    g.fillStyle(0xff2e63).fillRect(pad, pad + h * 0.15, 3, h * 0.15).fillRect(pad, pad + h * 0.7, 3, h * 0.15);
+    
+    // The texture needs to be slightly larger to fit the shadow and glow
+    g.generateTexture(key, w + 20, h + 20);
     g.destroy();
     return key;
   }

@@ -18,7 +18,11 @@ export function CharacterSelectPage() {
       <div className="card-grid">
         {CHARACTERS.map((c) => (
           <SelectCard key={c.id} accent={c.accent} selected={state.selectedCharacterId === c.id} onSelect={() => dispatch({ type: 'SELECT_CHARACTER', id: c.id })}>
-            <div className="portrait" style={{ '--accent': c.accent } as CSSProperties}><span>{c.name[0]}</span></div>
+            <div className="portrait" style={{ '--accent': c.accent } as CSSProperties}>
+              <svg viewBox="0 0 100 120" style={{ width: '80%', height: '80%', opacity: 0.8, filter: `drop-shadow(0 0 10px ${c.accent})` }}>
+                <path d="M50 20 C65 20 75 35 75 50 C75 65 65 80 50 80 C35 80 25 65 25 50 C25 35 35 20 50 20 Z M20 110 C20 90 35 85 50 85 C65 85 80 90 80 110 L80 120 L20 120 Z" fill={c.accent} />
+              </svg>
+            </div>
             <h3 className="card-title">{c.name}</h3>
             <p className="card-role">{c.role}</p>
             <p className="card-blurb">{c.blurb}</p>

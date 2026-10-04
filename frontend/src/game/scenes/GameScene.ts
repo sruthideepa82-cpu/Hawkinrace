@@ -20,6 +20,7 @@ export class GameScene extends Phaser.Scene {
   private inputController!: InputController;
   private accumulator = 0;
   private resultReported = false;
+  private previousState: string = 'countdown';
 
   constructor() {
     super(SCENE_KEYS.game);
@@ -62,7 +63,14 @@ export class GameScene extends Phaser.Scene {
     }
 
     this.playerCar.sync();
-    this.game.events.emit(GAME_EVENTS.hudUpdate, this.session.hudData());
+    
+    const hud = this.session.hudData();
+    if (this.previousState === 'countdown' && hud.state === 'racing') {
+      this.cameras.main.flash(500, 255, 255, 255);
+    }
+    this.previousState = hud.state;
+
+    this.game.events.emit(GAME_EVENTS.hudUpdate, hud);
     this.reportResultOnce();
   }
 

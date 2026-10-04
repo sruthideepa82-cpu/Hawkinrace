@@ -1,5 +1,4 @@
 import { Logo } from '../components/Logo';
-import { Particles } from '../components/Particles';
 import { useKeyPress } from '../hooks/useKeyPress';
 import { useGameStore } from '../store/GameStore';
 
@@ -10,7 +9,6 @@ export function IntroPage() {
 
   return (
     <section className="screen intro" onClick={start}>
-      <Particles />
       <div className="intro-center">
         <Logo />
         <p className="subtitle">RACE BEYOND THE ORDINARY</p>

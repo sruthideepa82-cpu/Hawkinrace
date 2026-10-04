@@ -7,13 +7,15 @@ import { PlaceholderPage } from './pages/PlaceholderPage';
 import { RacePage } from './pages/RacePage';
 import { ResultsPage } from './pages/ResultsPage';
 import { TrackSelectPage } from './pages/TrackSelectPage';
+import { GaragePage } from './pages/GaragePage';
 import { GameStoreProvider, useGameStore, type Screen } from './store/GameStore';
+import { AtmosphericBackground } from './components/AtmosphericBackground';
 
 function CurrentScreen({ screen }: { screen: Screen }) {
   switch (screen) {
     case 'intro': return <IntroPage />;
     case 'menu': return <MainMenuPage />;
-    case 'garage':
+    case 'garage': return <GaragePage />;
     case 'leaderboard':
     case 'settings': return <PlaceholderPage screen={screen} />;
     case 'character': return <CharacterSelectPage />;
@@ -30,9 +32,8 @@ function Shell() {
   const inRace = state.screen === 'race';
   return (
     <div className="app">
-      {!inRace && <div className="backdrop-grid" aria-hidden="true" />}
+      {!inRace && <AtmosphericBackground />}
       <CurrentScreen key={state.screen} screen={state.screen} />
-      {!inRace && <div className="scanlines" aria-hidden="true" />}
     </div>
   );
 }

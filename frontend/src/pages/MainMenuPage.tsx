@@ -1,5 +1,4 @@
 import { Logo } from '../components/Logo';
-import { Particles } from '../components/Particles';
 import { useGameStore, type Screen } from '../store/GameStore';
 
 const ITEMS: { icon: string; label: string; screen: Screen }[] = [
@@ -13,7 +12,6 @@ export function MainMenuPage() {
   const { dispatch } = useGameStore();
   return (
     <section className="screen menu">
-      <Particles count={40} />
       <Logo size="md" />
       <nav className="menu-list" aria-label="Main menu">
         {ITEMS.map((item) => (

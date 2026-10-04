@@ -20,28 +20,91 @@ h1, h2, h3, p, dl, dd, ol { margin: 0; padding: 0; }
 /* ---------- shell & atmosphere ---------- */
 .app {
   position: relative; height: 100%; overflow: hidden;
-  background:
-    radial-gradient(ellipse at 50% 125%, rgba(155, 92, 255, 0.28), transparent 60%),
-    radial-gradient(ellipse at 50% -25%, rgba(255, 46, 99, 0.2), transparent 55%),
-    var(--bg);
+  background: var(--bg);
 }
-.backdrop-grid {
-  position: absolute; left: -20%; right: -20%; bottom: 0; height: 42%; pointer-events: none;
-  background-image:
-    linear-gradient(rgba(255, 46, 99, 0.28) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255, 46, 99, 0.28) 1px, transparent 1px);
-  background-size: 64px 64px;
-  transform: perspective(420px) rotateX(64deg); transform-origin: 50% 100%;
-  -webkit-mask-image: linear-gradient(to top, #000 10%, transparent);
-  mask-image: linear-gradient(to top, #000 10%, transparent);
-  opacity: 0.45;
+
+.atmospheric-background {
+  position: absolute; inset: 0; z-index: 0; pointer-events: none; overflow: hidden;
+  background: linear-gradient(to bottom, #030108 0%, #0c051a 50%, #15051a 100%);
 }
+
+.atmospheric-background .sky {
+  position: absolute; inset: 0;
+  background: 
+    radial-gradient(circle at 70% 30%, rgba(255, 46, 99, 0.15) 0%, transparent 40%),
+    radial-gradient(circle at 20% 60%, rgba(155, 92, 255, 0.15) 0%, transparent 50%);
+  animation: pulse-sky 10s ease-in-out infinite alternate;
+}
+
+@keyframes pulse-sky {
+  0% { opacity: 0.8; }
+  100% { opacity: 1; }
+}
+
+.atmospheric-background .stars {
+  position: absolute; inset: 0;
+  background-image: 
+    radial-gradient(2px 2px at 20px 30px, #eee, rgba(0,0,0,0)),
+    radial-gradient(2px 2px at 40px 70px, #fff, rgba(0,0,0,0)),
+    radial-gradient(2px 2px at 50px 160px, #ddd, rgba(0,0,0,0)),
+    radial-gradient(2px 2px at 90px 40px, #fff, rgba(0,0,0,0)),
+    radial-gradient(2px 2px at 130px 80px, #fff, rgba(0,0,0,0)),
+    radial-gradient(2px 2px at 160px 120px, #ddd, rgba(0,0,0,0));
+  background-repeat: repeat;
+  background-size: 200px 200px;
+  opacity: 0.3;
+}
+
+.atmospheric-background .fog {
+  position: absolute; left: 0; right: 0; bottom: 0; height: 60%;
+  background: linear-gradient(to top, rgba(255, 46, 99, 0.1) 0%, rgba(155, 92, 255, 0.05) 40%, transparent 100%);
+  filter: blur(10px);
+}
+
+.atmospheric-background .distant-city {
+  position: absolute; left: 0; right: 0; bottom: 15%; height: 30%;
+  display: flex; align-items: flex-end; justify-content: center;
+  opacity: 0.7;
+}
+
+.atmospheric-background .water-tower {
+  width: 40px; height: 120px;
+  background: 
+    linear-gradient(to right, #000 0%, #111 50%, #000 100%);
+  clip-path: polygon(30% 0, 70% 0, 80% 20%, 80% 40%, 60% 50%, 60% 100%, 40% 100%, 40% 50%, 20% 40%, 20% 20%);
+  position: absolute; right: 20%; bottom: 0;
+}
+
+.atmospheric-background .trees {
+  position: absolute; left: 0; right: 0; bottom: 0; height: 60px;
+  background: 
+    linear-gradient(135deg, transparent 40%, #05020a 40%, #05020a 60%, transparent 60%),
+    linear-gradient(45deg, transparent 40%, #05020a 40%, #05020a 60%, transparent 60%);
+  background-size: 80px 80px;
+  background-position: 0 10px, 40px 10px;
+  opacity: 0.6;
+}
+
+/* CRT Effects */
+.crt-overlay {
+  position: absolute; inset: 0; pointer-events: none; z-index: 10;
+  box-shadow: inset 0 0 100px rgba(0,0,0,0.9);
+  background: radial-gradient(circle, transparent 60%, rgba(0, 0, 0, 0.6) 100%);
+}
+
 .scanlines {
-  position: absolute; inset: 0; pointer-events: none; z-index: 5;
-  background: repeating-linear-gradient(to bottom, rgba(0, 0, 0, 0.18) 0 1px, transparent 1px 3px);
-  box-shadow: inset 0 0 160px rgba(0, 0, 0, 0.75);
+  position: absolute; inset: 0; pointer-events: none; z-index: 11;
+  background: linear-gradient(to bottom, rgba(255,255,255,0), rgba(255,255,255,0) 50%, rgba(0,0,0,0.1) 50%, rgba(0,0,0,0.1));
+  background-size: 100% 4px;
 }
-.particles { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+
+.grain {
+  position: absolute; inset: 0; pointer-events: none; z-index: 12;
+  opacity: 0.04;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");
+}
+
+.particles { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 1; }
 .screen {
   position: relative; z-index: 1; height: 100%; overflow-y: auto;
   padding: clamp(16px, 3vw, 40px);
@@ -123,9 +186,11 @@ h1, h2, h3, p, dl, dd, ol { margin: 0; padding: 0; }
 
 .portrait { height: 120px; display: grid; place-items: center; overflow: hidden; background: radial-gradient(circle at 50% 120%, color-mix(in srgb, var(--accent) 55%, transparent), transparent 70%), linear-gradient(160deg, #1a1228, #0b0813); border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent); }
 .portrait span { font-family: var(--display); font-size: 84px; font-style: italic; color: var(--accent); text-shadow: 0 0 24px var(--accent); }
-.car-art { height: 100px; display: grid; place-items: center; background: linear-gradient(160deg, #1a1228, #0b0813); border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent); }
-.car-body { position: relative; width: 120px; height: 52px; border-radius: 16px 24px 24px 16px; background: var(--accent); box-shadow: 0 0 28px var(--accent); }
-.car-window { position: absolute; left: 36px; top: 8px; width: 40px; height: 36px; border-radius: 8px; background: #15121f; }
+.car-art { height: 100px; display: grid; place-items: center; background: linear-gradient(160deg, #1a1228, #0b0813); border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent); overflow: hidden; position: relative; }
+.car-body { position: relative; width: 140px; height: 35px; border-radius: 10px 40px 10px 10px; background: var(--accent); box-shadow: 0 0 28px var(--accent); margin-top: 20px; }
+.car-window { position: absolute; left: 40px; bottom: 35px; width: 60px; height: 25px; border-radius: 40px 10px 0 0; background: rgba(0,0,0,0.8); border: 2px solid var(--accent); border-bottom: none; }
+.car-body::before { content: ""; position: absolute; bottom: -10px; left: 20px; width: 24px; height: 24px; border-radius: 50%; background: #222; border: 3px solid #555; }
+.car-body::after { content: ""; position: absolute; bottom: -10px; right: 20px; width: 24px; height: 24px; border-radius: 50%; background: #222; border: 3px solid #555; }
 .track-preview { width: 100%; height: 110px; background: #0b0813; border: 1px solid rgba(255, 46, 99, 0.3); }
 .track-preview.empty { display: grid; place-items: center; font-size: 36px; color: #555; }
 
