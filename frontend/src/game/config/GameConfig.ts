@@ -16,6 +16,17 @@ export const GAME_EVENTS = {
   raceFinished: 'race:finished',
 } as const;
 
+/**
+ * Font stacks for in-game (canvas) text. These must be real CSS font values:
+ * a canvas 2D context does not resolve custom properties, so `var(--display)`
+ * is rejected by ctx.font and the text silently falls back to 10px sans-serif.
+ * Keep them in sync with `--display` / `--mono` in src/index.css.
+ */
+export const FONTS = {
+  display: "'Impact', 'Haettenschweiler', 'Arial Black', sans-serif",
+  mono: "'Courier New', monospace",
+} as const;
+
 export const COLORS = {
   grass: 0x0c1410,
   grassDetail: 0x101c16,
@@ -90,4 +101,13 @@ export const RACE = {
 export const CAMERA = {
   zoom: 0.9,
   lerp: 0.09,
+  /** Forward speed (px/s) above which the camera pulls back for a speed feel. */
+  speedThreshold: 400,
+  /** Extra zoom-out applied at high speed. */
+  speedZoomOut: 0.05,
+  /** How long the zoom eases between the two states (ms). Prevents a hard pop. */
+  zoomBlendMs: 250,
+  /** One-shot rumble played when the car enters the high-speed range. */
+  shakeDuration: 250,
+  shakeIntensity: 0.0015,
 } as const;

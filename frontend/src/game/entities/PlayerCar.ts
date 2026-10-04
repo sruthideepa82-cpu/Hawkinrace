@@ -11,16 +11,20 @@ export class PlayerCar {
 
   private brakeLights!: Phaser.GameObjects.Graphics;
   private tireMarks!: Phaser.GameObjects.RenderTexture;
-  private scene: Phaser.Scene;
+  /** Reusable dots stamped into `tireMarks` (created once, never per frame). */
+  private tireDots: Phaser.GameObjects.Arc[] = [];
   private exhaustEmitter!: Phaser.GameObjects.Particles.ParticleEmitter;
 
   constructor(scene: Phaser.Scene, car: RaceCarConfig, worldWidth: number, worldHeight: number) {
-    this.scene = scene;
     this.physics = new CarPhysics(createCarTuning(car.stats));
     const key = PlayerCar.ensureTexture(scene, car);
     
     // Tire marks layer (persists)
     this.tireMarks = scene.add.renderTexture(0, 0, worldWidth, worldHeight).setDepth(2);
+    this.tireDots = [
+      scene.add.circle(0, 0, 3, 0x111111, 0.1).setVisible(false),
+      scene.add.circle(0, 0, 3, 0x111111, 0.1).setVisible(false),
+    ];
     
     this.sprite = scene.add.image(0, 0, key).setDepth(10);
     
@@ -128,8 +132,9 @@ export class PlayerCar {
       
       // Tire marks
       if (speed > 50) {
-        this.tireMarks.draw(this.scene.add.circle(p1x, p1y, 3, 0x111111, 0.1).setVisible(false));
-        this.tireMarks.draw(this.scene.add.circle(p2x, p2y, 3, 0x111111, 0.1).setVisible(false));
+        this.tireDots[0].setPosition(p1x, p1y);
+        this.tireDots[1].setPosition(p2x, p2y);
+        this.tireMarks.draw(this.tireDots);
       }
     }
   }

@@ -21,6 +21,10 @@ export class GameScene extends Phaser.Scene {
   private accumulator = 0;
   private resultReported = false;
   private previousState: string = 'countdown';
+  /** Whether the car was above the high-speed threshold last frame. */
+  private speeding = false;
+  /** Last zoom we asked for, so the zoom is only eased when the state flips. */
+  private zoomTarget: number = CAMERA.zoom;
 
   constructor() {
     super(SCENE_KEYS.game);
@@ -30,6 +34,9 @@ export class GameScene extends Phaser.Scene {
     this.bridge = getRaceBridge(this.game);
     this.resultReported = false;
     this.accumulator = 0;
+    this.previousState = 'countdown';
+    this.speeding = false;
+    this.zoomTarget = CAMERA.zoom;
 
     const layout = new TrackLayout(getTrackDefinition(this.bridge.config.trackId));
     new TrackRenderer(this, layout);
@@ -66,13 +73,20 @@ export class GameScene extends Phaser.Scene {
     const speed = this.playerCar.physics.speed;
     this.playerCar.sync(input.brake, input.accelerate, speed);
     
-    // Camera effects
+    // Camera effects. The zoom eases between two states and the rumble is a
+    // one-shot played on entering the high-speed range: restarting a shake and
+    // snapping the zoom on every frame made the whole view vibrate while driving.
     const cam = this.cameras.main;
-    if (speed > 400) {
-      cam.setZoom(CAMERA.zoom - 0.05); // Zoom out slightly at high speed
-      cam.shake(100, 0.001); // Subtle high-speed shake
-    } else {
-      cam.setZoom(CAMERA.zoom);
+    const speeding = speed > CAMERA.speedThreshold;
+    if (speeding !== this.speeding) {
+      this.speeding = speeding;
+      const target = speeding ? CAMERA.zoom - CAMERA.speedZoomOut : CAMERA.zoom;
+      if (target !== this.zoomTarget) {
+        this.zoomTarget = target;
+        // force: retarget from the current zoom if the threshold flips mid-blend.
+        cam.zoomTo(target, CAMERA.zoomBlendMs, 'Sine.easeOut', true);
+      }
+      if (speeding) cam.shake(CAMERA.shakeDuration, CAMERA.shakeIntensity);
     }
     
     const hud = this.session.hudData();
