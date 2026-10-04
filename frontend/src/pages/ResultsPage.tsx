@@ -17,19 +17,43 @@ export function ResultsPage() {
   const result = state.lastResult;
 
   // RETRY rebuilds the Phaser game from scratch, so all four cars, laps,
-  // checkpoints, timers and nitro are reset by construction.
+  // checkpoints, timers, nitro and the finish order are reset by construction.
   const retry = () => dispatch({ type: 'START_RACE' });
+  const trackSelect = () => dispatch({ type: 'NAVIGATE', screen: 'track' });
+  const mainMenu = () => dispatch({ type: 'NAVIGATE', screen: 'menu' });
+
+  const actions = (
+    <div className="results-actions">
+      <NeonButton onClick={retry}>RETRY</NeonButton>
+      <NeonButton variant="ghost" onClick={trackSelect}>TRACK SELECT</NeonButton>
+      <NeonButton variant="ghost" onClick={mainMenu}>MAIN MENU</NeonButton>
+    </div>
+  );
+
+  // A race the player lost to the AI is never announced as complete.
+  if (result?.outcome === 'failed') {
+    return (
+      <section className="screen results results-failed">
+        <h2 className="results-title">RACE FAILED</h2>
+        <p className="results-failure-line">THREE RACERS BEAT YOU TO THE FINISH.</p>
+        <p className="results-failure-sub">YOU FAILED</p>
+        <dl className="results-grid">
+          <div>
+            <dt>FINAL POSITION</dt>
+            <dd>{result.playerPosition} / {result.standings.length}</dd>
+          </div>
+        </dl>
+        {actions}
+      </section>
+    );
+  }
 
   if (!result) {
     return (
       <section className="screen results">
         <h2 className="results-title">RACE COMPLETE</h2>
         <p className="muted">No race data.</p>
-        <div className="results-actions">
-          <NeonButton onClick={retry}>RETRY</NeonButton>
-          <NeonButton variant="ghost" onClick={() => dispatch({ type: 'NAVIGATE', screen: 'track' })}>TRACK SELECT</NeonButton>
-          <NeonButton variant="ghost" onClick={() => dispatch({ type: 'NAVIGATE', screen: 'menu' })}>MAIN MENU</NeonButton>
-        </div>
+        {actions}
       </section>
     );
   }
@@ -37,10 +61,13 @@ export function ResultsPage() {
   const standings = result.standings;
   const me = standings.find((s) => s.isPlayer);
   const playerPosition = result.playerPosition;
+  // A win is called out as one; every other placing reads as a result.
+  const headline = playerPosition === 1 ? 'WIN' : 'RESULT';
 
   return (
-    <section className="screen results">
+    <section className={`screen results ${playerPosition === 1 ? 'results-won' : ''}`}>
       <h2 className="results-title">RACE COMPLETE</h2>
+      <p className="results-headline">{headline} · {ordinal(playerPosition)} PLACE</p>
 
       <ol className="standings" aria-label="Final classification">
         {standings.map((entry: StandingEntry) => (
@@ -89,11 +116,7 @@ export function ResultsPage() {
         </ol>
       )}
 
-      <div className="results-actions">
-        <NeonButton onClick={retry}>RETRY</NeonButton>
-        <NeonButton variant="ghost" onClick={() => dispatch({ type: 'NAVIGATE', screen: 'track' })}>TRACK SELECT</NeonButton>
-        <NeonButton variant="ghost" onClick={() => dispatch({ type: 'NAVIGATE', screen: 'menu' })}>MAIN MENU</NeonButton>
-      </div>
+      {actions}
 
       <small className="muted">Coins are still a placeholder value.</small>
     </section>

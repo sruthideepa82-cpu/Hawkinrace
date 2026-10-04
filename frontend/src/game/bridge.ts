@@ -41,17 +41,31 @@ export interface StandingEntry {
   progress: number;
 }
 
+/**
+ * How the player's race ended.
+ *
+ * `finished` means the player took the chequered flag; their position is
+ * whatever it actually was. `failed` means all three AI cars finished first and
+ * the player is still on track, so the race ends for them there and they are
+ * classified last. The results screen must not show "RACE COMPLETE" for the
+ * second case.
+ */
+export type RaceOutcome = 'finished' | 'failed';
+
 export interface RaceResult {
-  /** The player's total race time. */
+  outcome: RaceOutcome;
+  /** The player's total race time. On failure this is the time they were beaten. */
   timeMs: number;
   lapTimesMs: number[];
   lapsCompleted: number;
   totalLaps: number;
   /** Final classification of every car, ordered 1st..4th. */
   standings: StandingEntry[];
-  /** The player's finishing slot, 1-based. */
+  /** The player's finishing slot, 1-based. Always the field size on a failure. */
   playerPosition: number;
   playerBestLapMs: number | null;
+  /** How many AI cars had taken the flag when the race ended. */
+  aiFinishedCount: number;
 }
 
 export interface RaceBridge {

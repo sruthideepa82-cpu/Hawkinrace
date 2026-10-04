@@ -17,6 +17,8 @@ const PHYSICS_STEP = 1 / 120;
 const MAX_FRAME_SECONDS = 0.05;
 /** Lets the player see the "RACE COMPLETE" banner before React shows results. */
 const RESULT_HANDOFF_DELAY_MS = 1800;
+/** Shorter, because a failure is a stop rather than a finish to celebrate. */
+const FAILURE_HANDOFF_DELAY_MS = 1100;
 
 export class GameScene extends Phaser.Scene {
   private bridge!: RaceBridge;
@@ -157,9 +159,9 @@ export class GameScene extends Phaser.Scene {
     }
 
     // Anti-gravity twist logic. Only the player's view drives it, and only while
-    // the race is live, so a finished car stops rolling the camera.
+    // the race is live, so a finished or failed car stops rolling the camera.
     let twist = 0;
-    if (!this.session.race.isFinished) {
+    if (!this.session.race.isOver) {
       twist = this.session.layout.getAntiGravityTwist(player.physics.x, player.physics.y);
     }
 
@@ -174,7 +176,10 @@ export class GameScene extends Phaser.Scene {
       this.cameras.main.flash(500, 255, 255, 255);
     }
 
-    if (hud.state === 'finished' && this.previousState !== 'finished') {
+    // Either way the race is over -- completed, or failed because every AI car
+    // finished first -- so hand the result to React once, on the transition.
+    const over = hud.state === 'finished' || hud.state === 'failed';
+    if (over && this.previousState !== 'finished' && this.previousState !== 'failed') {
       this.finishRace();
     }
 
@@ -192,8 +197,13 @@ export class GameScene extends Phaser.Scene {
   }
 
   /**
-   * Called only once EVERY car has finished, so the race never ends early just
-   * because the player crossed the line first.
+   * Called once the race is over for any reason, so the race never ends early
+   * just because the player crossed the line first.
+   *
+   * The session is the single authority on whether that moment has arrived; this
+   * just reacts to the state changing. A failed race uses a shorter handoff so
+   * the "YOU FAILED" moment does not drag, and carries `outcome` through so the
+   * results screen can tell a failure from a completed race.
    */
   private finishRace(): void {
     if (this.resultReported) return;
@@ -201,7 +211,8 @@ export class GameScene extends Phaser.Scene {
 
     const result = this.session.result();
     if (result) {
-      this.time.delayedCall(RESULT_HANDOFF_DELAY_MS, () => this.bridge.onRaceComplete(result));
+      const delay = result.outcome === 'failed' ? FAILURE_HANDOFF_DELAY_MS : RESULT_HANDOFF_DELAY_MS;
+      this.time.delayedCall(delay, () => this.bridge.onRaceComplete(result));
     }
   }
 }

@@ -19,6 +19,7 @@ export class HudScene extends Phaser.Scene {
   private speedText!: Phaser.GameObjects.Text;
   private centerText!: Phaser.GameObjects.Text;
   private banner!: Phaser.GameObjects.Container;
+  private bannerTitle!: Phaser.GameObjects.Text;
   private bannerTime!: Phaser.GameObjects.Text;
 
   private bridge!: RaceBridge;
@@ -107,10 +108,11 @@ export class HudScene extends Phaser.Scene {
 
     this.centerText = this.add.text(width / 2, height / 2 - 40, '', { fontFamily: FONTS.display, fontSize: '140px', color: RED, fontStyle: 'bold' }).setOrigin(0.5);
 
-    // Finish banner
-    const title = this.add.text(0, -40, 'RACE COMPLETE', { fontFamily: FONTS.display, fontSize: '80px', color: '#ffffff' }).setOrigin(0.5);
+    // Finish banner. The title is swapped on failure so it can never read
+    // "RACE COMPLETE" for a race the player lost.
+    this.bannerTitle = this.add.text(0, -40, 'RACE COMPLETE', { fontFamily: FONTS.display, fontSize: '80px', color: '#ffffff' }).setOrigin(0.5);
     this.bannerTime = this.add.text(0, 40, '', { fontFamily: FONTS.mono, fontSize: '32px', color: '#ffffff' }).setOrigin(0.5);
-    this.banner = this.add.container(width / 2, height / 2, [title, this.bannerTime]).setVisible(false);
+    this.banner = this.add.container(width / 2, height / 2, [this.bannerTitle, this.bannerTime]).setVisible(false);
 
     this.game.events.on(GAME_EVENTS.hudUpdate, this.onUpdate, this);
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.game.events.off(GAME_EVENTS.hudUpdate, this.onUpdate, this));
@@ -177,15 +179,27 @@ export class HudScene extends Phaser.Scene {
       this.centerText.setText('');
     }
 
-    const finished = data.state === 'finished';
-    this.banner.setVisible(finished);
-    if (finished) {
-      const me = data.standings.find((s) => s.isPlayer);
-      this.bannerTime.setText(
-        me?.finishTimeMs != null
-          ? `${ordinal(me.position)} PLACE   ${formatRaceTime(me.finishTimeMs)}`
-          : `FINAL TIME  ${formatRaceTime(data.finalTimeMs ?? data.elapsedMs)}`,
-      );
+    // The banner only ever appears once the race is over, and says the right
+    // thing for which way it ended.
+    const failed = data.state === 'failed';
+    const over = data.state === 'finished' || failed;
+    this.banner.setVisible(over);
+    if (over) {
+      if (failed) {
+        this.bannerTitle.setText('YOU FAILED').setColor('#ff2e63');
+        // Reaching this state means every car but the player's has finished, so
+        // the count is simply the field minus the player.
+        const aiCount = Math.max(0, data.standings.length - 1);
+        this.bannerTime.setText(`${aiCount}/${aiCount} RACERS BEAT YOU`);
+      } else {
+        this.bannerTitle.setText('RACE COMPLETE').setColor('#ffffff');
+        const me = data.standings.find((s) => s.isPlayer);
+        this.bannerTime.setText(
+          me?.finishTimeMs != null
+            ? `${ordinal(me.position)} PLACE   ${formatRaceTime(me.finishTimeMs)}`
+            : `FINAL TIME  ${formatRaceTime(data.finalTimeMs ?? data.elapsedMs)}`,
+        );
+      }
     }
   }
 

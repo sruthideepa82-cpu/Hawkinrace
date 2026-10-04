@@ -18,7 +18,14 @@ export class Racer {
   readonly laps: LapManager;
   readonly nitro: NitroTank;
   readonly ai: AiDriver | null;
-  /** 1-based finishing order, or null while still racing. */
+  /**
+ * 1-based finishing order, or null while still racing.
+ *
+ * On a failed race the player ends up with the last position without this ever
+ * being set, because `standings` sorts every car that took the flag ahead of the
+ * one still racing. That is what makes them P4 without inventing a finish they
+ * did not take.
+ */
   finishPosition: number | null = null;
   /** Set the frame the car took the flag, so physics can coast it to a stop. */
   justFinished = false;
@@ -229,21 +236,62 @@ export class RaceSession {
         if (event === 'finished') racer.justFinished = true;
       }
       this.assignFinishPositions();
+      this.resolveOutcome();
     }
+  }
 
-    if (!this.race.isFinished && this.racers.every((r) => r.finished)) {
+  /**
+   * Decides whether the race is over, from what the cars actually did.
+   *
+   * Two outcomes, and the order of these checks is the whole rule:
+   *
+   *  - Every car finished -> the race is complete. Checked first, because a
+   *    player who finished last is still a finisher, not a failure.
+   *  - Every AI finished and the player had not -> the player failed. One or two
+   *    AI finishing first is NOT a failure; that is the race working, with the
+   *    player mid-field and still racing for a placing.
+   *
+   * There is no timer anywhere in here. Both conditions are read off real finish
+   * state on the frame it becomes true, and this only runs inside the
+   * `if (racing)` block, so it can neither fire late (after the player has
+   * actually finished) nor early.
+   */
+  private resolveOutcome(): void {
+    if (this.racers.every((r) => r.finished)) {
       this.race.finish();
+      return;
     }
+    if (!this.player.finished && this.aiFinishedCount() >= this.aiCount) {
+      this.race.fail();
+    }
+  }
+
+  /** Number of AI cars on the grid (every car that is not the player's). */
+  private get aiCount(): number {
+    return this.racers.filter((r) => !r.isPlayer).length;
+  }
+
+  /** How many AI cars have taken the chequered flag so far. */
+  aiFinishedCount(): number {
+    return this.racers.filter((r) => !r.isPlayer && r.finished).length;
   }
 
   /**
    * Finish order is derived from recorded times, not from the order cars happened
    * to be stepped in, so two cars crossing together are ordered fairly.
+   *
+   * Two cars in the same physics step share a timestamp, so the tie is broken on
+   * how much of the road each has actually covered. That is deterministic and it
+   * is decided by the racing itself, rather than by array order or a coin flip.
    */
   private assignFinishPositions(): void {
     const done = this.racers.filter((r) => r.laps.isComplete);
     if (done.length === 0) return;
-    done.sort((a, b) => (a.laps.finishTimeMs ?? 0) - (b.laps.finishTimeMs ?? 0));
+    done.sort(
+      (a, b) =>
+        (a.laps.finishTimeMs ?? 0) - (b.laps.finishTimeMs ?? 0)
+        || b.laps.progressTiebreak - a.laps.progressTiebreak,
+    );
     done.forEach((racer, i) => {
       if (racer.finishPosition === null) racer.finishPosition = i + 1;
     });
@@ -350,20 +398,30 @@ export class RaceSession {
     };
   }
 
-  /** Final result once every car has finished, otherwise null. */
+  /**
+   * Final result once the race is over, otherwise null.
+   *
+   * The race is over in either of two cases: every car finished, or the player
+   * was beaten to the line by all of the AI. `outcome` tells the results screen
+   * which one happened so a failed race never reads as "RACE COMPLETE".
+   */
   result(): RaceResult | null {
-    if (!this.race.isFinished) return null;
+    if (!this.race.isOver) return null;
     const snap = this.race.snapshot();
     const board = this.standings();
     const me = this.racers.find((r) => r.isPlayer) ?? this.racers[0];
     return {
+      outcome: this.race.isFailed ? 'failed' : 'finished',
+      // On a failure the player never took the flag, so the elapsed clock is
+      // what they are being shown as having been beaten in.
       timeMs: me.laps.finishTimeMs ?? snap.elapsedMs,
       lapTimesMs: [...me.laps.lapTimesMs],
       lapsCompleted: me.laps.snapshot().lap,
       totalLaps: RACE.totalLaps,
       standings: board,
-      playerPosition: board.find((s) => s.isPlayer)?.position ?? 1,
+      playerPosition: board.find((s) => s.isPlayer)?.position ?? this.racers.length,
       playerBestLapMs: me.laps.bestLapMs,
+      aiFinishedCount: this.aiFinishedCount(),
     };
   }
 

@@ -237,6 +237,17 @@ h1, h2, h3, p, dl, dd, ol { margin: 0; padding: 0; }
 .standing.player { border-color: rgba(255, 46, 99, 0.55); border-left-color: var(--red); background: rgba(255, 46, 99, 0.1); box-shadow: 0 0 24px rgba(255, 46, 99, 0.18); }
 .standing.player .standing-name, .standing.player .standing-time { color: var(--red); }
 
+/* ---------- outcome callouts ---------- */
+/* The headline under the title: "WIN · 1ST PLACE" on a win, "RESULT · 3RD PLACE" otherwise. */
+.results-headline { font-family: var(--display); font-size: clamp(22px, 3.6vw, 40px); letter-spacing: 0.16em; color: #fff; margin: -8px 0 0; }
+.results-won .results-title { color: #fff; text-shadow: 0 0 12px var(--red), 0 0 46px rgba(255, 46, 99, 0.7); }
+
+/* ---------- failure ---------- */
+.results-failed { background: radial-gradient(ellipse at center, rgba(255, 46, 99, 0.16), transparent 62%); }
+.results-failed .results-title { color: var(--red); }
+.results-failure-line { font-family: var(--display); font-size: clamp(22px, 4vw, 44px); letter-spacing: 0.14em; color: #fff; margin: 0; }
+.results-failure-sub { font-family: var(--mono); font-size: clamp(12px, 1.6vw, 16px); letter-spacing: 0.3em; color: var(--red); margin: 0; }
+
 @media (max-width: 640px) {
   .standing { grid-template-columns: 46px 10px minmax(70px, 1fr) auto; gap: 8px; padding: 8px 10px; }
   .standing-car { display: none; }
