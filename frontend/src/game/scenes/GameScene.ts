@@ -79,20 +79,30 @@ export class GameScene extends Phaser.Scene {
     if (this.previousState === 'countdown' && hud.state === 'racing') {
       cam.flash(500, 255, 255, 255);
     }
+
+    if (hud.state === 'finished' && this.previousState !== 'finished') {
+      this.finishRace();
+    }
+    
     this.previousState = hud.state;
 
     // We can also add map data to hud here for the minimap
     (hud as any).playerPos = { x: this.playerCar.physics.x, y: this.playerCar.physics.y };
 
     this.game.events.emit(GAME_EVENTS.hudUpdate, hud);
-    this.reportResultOnce();
   }
 
-  private reportResultOnce(): void {
+  private finishRace(): void {
     if (this.resultReported) return;
-    const result = this.session.result();
-    if (!result) return;
     this.resultReported = true;
-    this.time.delayedCall(RESULT_HANDOFF_DELAY_MS, () => this.bridge.onRaceComplete(result));
+
+    // Stop player controls and movement immediately
+    this.playerCar.physics.vx = 0;
+    this.playerCar.physics.vy = 0;
+
+    const result = this.session.result();
+    if (result) {
+      this.time.delayedCall(RESULT_HANDOFF_DELAY_MS, () => this.bridge.onRaceComplete(result));
+    }
   }
 }

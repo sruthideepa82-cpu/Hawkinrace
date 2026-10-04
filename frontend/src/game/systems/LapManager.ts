@@ -9,10 +9,11 @@ export type LapEvent = 'none' | 'checkpoint' | 'lap' | 'finished';
  * the line, reversing over it, or cutting across cannot add laps.
  */
 export class LapManager {
-  private completedLaps = 0;
+  private _currentLap = 1;
   private nextCheckpoint = 0;
   readonly lapTimesMs: number[] = [];
   private lastLapEndMs = 0;
+  private raceFinished = false;
 
   constructor(
     private readonly finishGate: Gate,
@@ -22,15 +23,15 @@ export class LapManager {
 
   /** Lap number to display (1-based, capped at totalLaps). */
   get currentLap(): number {
-    return Math.min(this.completedLaps + 1, this.totalLaps);
+    return this._currentLap;
   }
 
   get isComplete(): boolean {
-    return this.completedLaps >= this.totalLaps;
+    return this.raceFinished;
   }
 
   update(prev: Point, cur: Point, raceTimeMs: number): LapEvent {
-    if (this.isComplete) return 'none';
+    if (this.raceFinished) return 'none';
 
     if (this.nextCheckpoint < this.checkpoints.length) {
       if (this.checkpoints[this.nextCheckpoint].crossedForward(prev, cur)) {
@@ -41,11 +42,17 @@ export class LapManager {
     }
 
     if (this.finishGate.crossedForward(prev, cur)) {
-      this.completedLaps++;
-      this.nextCheckpoint = 0;
       this.lapTimesMs.push(raceTimeMs - this.lastLapEndMs);
       this.lastLapEndMs = raceTimeMs;
-      return this.isComplete ? 'finished' : 'lap';
+      this.nextCheckpoint = 0;
+
+      if (this._currentLap < this.totalLaps) {
+        this._currentLap++;
+        return 'lap';
+      } else {
+        this.raceFinished = true;
+        return 'finished';
+      }
     }
     return 'none';
   }
