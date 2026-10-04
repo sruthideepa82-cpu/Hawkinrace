@@ -1,4 +1,4 @@
-import { createCarTuning, type CarTuning } from '../config/carTuning';
+import type { CarTuning } from '../config/carTuning';
 
 export interface InputState {
   accelerate: boolean;
@@ -34,7 +34,7 @@ export class CarPhysics {
   /** Smoothed steering wheel position, -1..1. */
   steerValue = 0;
 
-  constructor(readonly tuning: CarTuning = createCarTuning()) {}
+  constructor(readonly tuning: CarTuning) {}
 
   reset(x: number, y: number, heading: number): void {
     this.x = x;
@@ -57,19 +57,32 @@ export class CarPhysics {
   step(dt: number, input: InputState, dragMultiplier: number = 1): void {
     const t = this.tuning;
 
-    // 1. Wheel position moves gradually toward the key, never snaps.
-    const rate = input.steer === 0 ? t.steerReturn : t.steerResponse;
-    this.steerValue = approach(this.steerValue, input.steer, rate * dt);
+    // 1. Steering smoothing
+    const steerTarget = input.steer;
+    const steerRateLimit = 4.0; // How fast wheel turns
+    this.steerValue = approach(this.steerValue, steerTarget, steerRateLimit * dt);
 
-    // 2. Yaw: no turning on the spot, best near peak speed, weaker flat-out.
+    // 2. Speed-based Steering
     const fwd0 = this.forwardSpeed;
     const abs0 = Math.abs(fwd0);
-    const ramp = Math.min(abs0 / t.steerPeakSpeed, 1);
-    const topFade = Math.max(0, (abs0 - t.steerPeakSpeed) / (t.maxSpeed - t.steerPeakSpeed));
-    const authority = ramp * (1 - t.highSpeedSteerLoss * Math.min(topFade, 1));
-    this.heading += this.steerValue * t.maxSteerRate * authority * (fwd0 >= 0 ? 1 : -1) * dt;
+    
+    // Steering is weak at low speeds, responsive at mid, and requires more control at top speed
+    let steerAuthority = 0;
+    if (abs0 > 5) {
+      const peakSpeed = t.maxSpeed * 0.4;
+      if (abs0 <= peakSpeed) {
+        steerAuthority = abs0 / peakSpeed; // Ramps up
+      } else {
+        // Slowly fades out at very high speeds, keeping a minimum authority of 50%
+        steerAuthority = 1.0 - 0.5 * ((abs0 - peakSpeed) / (t.maxSpeed - peakSpeed));
+      }
+    }
+    
+    // Reverse steering flips direction naturally since the car moves backwards
+    const steerDir = fwd0 >= 0 ? 1 : -1;
+    this.heading += this.steerValue * t.steerRate * steerAuthority * steerDir * dt;
 
-    // 3. Split velocity into the car's current forward / sideways axes.
+    // 3. Split velocity into forward / lateral
     const fx = Math.cos(this.heading);
     const fy = Math.sin(this.heading);
     const rx = -fy;
@@ -77,52 +90,66 @@ export class CarPhysics {
     let fwd = this.vx * fx + this.vy * fy;
     let lat = this.vx * rx + this.vy * ry;
 
-    // 4. Pedals. Brake wins if both are held.
-    const throttle = input.accelerate && !input.brake;
-    if (throttle) {
+    // 4. Acceleration & Braking
+    if (input.accelerate && !input.brake) {
       if (fwd < 0) {
-        fwd += t.brakeDeceleration * dt; // stop rolling backwards first
+        fwd += t.brakeForce * dt; // Braking while reversing
       } else {
+        // Progressive acceleration (weaker near max speed)
         const ratio = Math.min(fwd / t.maxSpeed, 1);
-        // Off-road cuts max acceleration
-        fwd += t.acceleration * Math.max(0.08, 1 - ratio * ratio) * dt * (1 / dragMultiplier);
+        fwd += t.acceleration * (1 - ratio * ratio * 0.8) * dt * (1 / dragMultiplier);
       }
     } else if (input.brake) {
-      if (fwd > t.reverseSwitchSpeed) {
-        fwd = Math.max(0, fwd - t.brakeDeceleration * dt); // brake first
+      // Strong intentional braking
+      if (fwd > 15) { // If moving forward, brake hard
+        fwd = Math.max(0, fwd - t.brakeForce * dt);
       } else {
-        fwd -= t.reverseAcceleration * dt; // slow enough: reverse
+        // If stopped, reverse slowly
+        fwd -= t.reverseAcceleration * dt;
       }
     } else {
+      // Coasting (Momentum)
       const decel = (t.coastFriction + t.drag * Math.abs(fwd)) * dragMultiplier * dt;
-      fwd = Math.abs(fwd) <= decel ? 0 : fwd - Math.sign(fwd) * decel;
+      if (Math.abs(fwd) <= decel) {
+        fwd = 0;
+      } else {
+        fwd -= Math.sign(fwd) * decel;
+      }
     }
     
-    // Also apply drag multiplier to max speed if it's very high (like grass)
+    // Off-road affects top speed too
     const effectiveMaxSpeed = t.maxSpeed / Math.sqrt(dragMultiplier);
     fwd = Math.max(-t.maxReverseSpeed, Math.min(effectiveMaxSpeed, fwd));
 
-    // 5. Tyre grip bleeds off sideways sliding.
+    // 5. Drift / Lateral sliding
+    // Lateral grip bleeds off sideways movement over time.
     lat *= Math.exp(-t.lateralGrip * dt);
 
+    // Apply back to global velocity
     this.vx = fx * fwd + rx * lat;
     this.vy = fy * fwd + ry * lat;
     this.x += this.vx * dt;
     this.y += this.vy * dt;
   }
 
-  /** Move to the corrected position; head-on hits lose speed, sliding barely does. */
+  /** Apply hard boundary collision. */
   applyCollision(hit: CollisionResult): void {
+    // Prevent moving into the boundary
     this.x = hit.x;
     this.y = hit.y;
+
+    // Project velocity along the wall tangent
     const vn = this.vx * hit.nx + this.vy * hit.ny;
-    if (vn >= 0) return;
-    const impact = -vn;
-    const speed = Math.max(this.speed, 1);
-    const keep = 1 - this.tuning.wallScrub * (impact / speed);
-    const tx = this.vx - vn * hit.nx;
-    const ty = this.vy - vn * hit.ny;
-    this.vx = tx * keep + hit.nx * impact * this.tuning.wallBounce;
-    this.vy = ty * keep + hit.ny * impact * this.tuning.wallBounce;
+    if (vn >= 0) return; // Moving away from the wall
+    
+    // Kill the velocity component pointing into the wall (allow sliding along it)
+    // No bounce or vibration, just solid slide.
+    this.vx -= hit.nx * vn;
+    this.vy -= hit.ny * vn;
+    
+    // Slight friction scrub from the wall hit
+    const scrub = 0.95; 
+    this.vx *= scrub;
+    this.vy *= scrub;
   }
 }

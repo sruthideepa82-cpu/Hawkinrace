@@ -2,24 +2,36 @@ import Phaser from 'phaser';
 import type { TrackLayout } from './TrackLayout';
 import type { Point } from '../config/tracks';
 
-const TRACK_TEXTURE = 'track-base';
-
 export class TrackRenderer {
   constructor(scene: Phaser.Scene, layout: TrackLayout) {
-    if (!scene.textures.exists(TRACK_TEXTURE)) {
-      TrackRenderer.bake(scene, layout);
+    const textureKey = `track-${layout.definition.id}`;
+    if (!scene.textures.exists(textureKey)) {
+      TrackRenderer.bake(scene, layout, textureKey);
     }
-    scene.add.image(0, 0, TRACK_TEXTURE).setOrigin(0, 0).setDepth(0);
+    scene.add.image(0, 0, textureKey).setOrigin(0, 0).setDepth(0);
   }
 
-  private static bake(scene: Phaser.Scene, layout: TrackLayout): void {
+  private static bake(scene: Phaser.Scene, layout: TrackLayout, textureKey: string): void {
     const { worldWidth: W, worldHeight: H, roadWidth, centerline } = layout;
+    const isUpsideDown = layout.definition.id === 'upside-down';
     const half = roadWidth / 2;
     const g = scene.add.graphics();
 
-    g.fillStyle(0x05040a).fillRect(0, 0, W, H);
     let seed = 1337;
     const rand = () => ((seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296);
+
+    // Background Void
+    if (isUpsideDown) {
+      // Dark red/magenta void
+      g.fillStyle(0x0f0005).fillRect(0, 0, W, H);
+      // Draw distant crimson nebula clouds
+      for (let i = 0; i < 50; i++) {
+        g.fillStyle(0x330011, rand() * 0.3);
+        g.fillEllipse(rand() * W, rand() * H, rand() * 800 + 400, rand() * 400 + 200);
+      }
+    } else {
+      g.fillStyle(0x05040a).fillRect(0, 0, W, H);
+    }
 
     const getZone = (x: number, y: number): 'downtown' | 'residential' | 'edge' => {
       if (x < 2000 && y > 1000) return 'downtown';
@@ -87,6 +99,39 @@ export class TrackRenderer {
       g.fillStyle(0xff2a5f, 0.6).fillCircle(x, y, 5);
     };
 
+    const drawFloatingRock = (x: number, y: number) => {
+      g.fillStyle(0x1a0f14, 1.0); // Dark purple-ish rock
+      const size = 30 + rand() * 50;
+      g.beginPath();
+      for (let i = 0; i < 6; i++) {
+        const a = (i / 6) * Math.PI * 2;
+        const r = size * (0.7 + rand() * 0.6);
+        const px = x + Math.cos(a) * r;
+        const py = y + Math.sin(a) * r;
+        if (i === 0) g.moveTo(px, py);
+        else g.lineTo(px, py);
+      }
+      g.closePath();
+      g.fillPath();
+      
+      // Cracks in rock
+      g.lineStyle(2, 0xff1144, 0.3);
+      g.lineBetween(x - size/2, y, x + size/2, y + (rand()-0.5)*size);
+    };
+
+    const drawTwistedRoot = (x: number, y: number) => {
+      g.lineStyle(8 + rand() * 12, 0x0a0505, 1);
+      g.beginPath();
+      g.moveTo(x, y);
+      let cx = x, cy = y;
+      for (let i = 0; i < 4; i++) {
+        cx += (rand() - 0.5) * 100;
+        cy += (rand() - 0.5) * 100;
+        g.lineTo(cx, cy);
+      }
+      g.strokePath();
+    };
+
     // Environment Scatter
     for (let i = 0; i < 2000; i++) {
       const px = rand() * W, py = rand() * H;
@@ -97,23 +142,34 @@ export class TrackRenderer {
       }
       
       if (distToRoad > half + 100) {
-        const zone = getZone(px, py);
-        if (zone === 'downtown') {
-          if (distToRoad < half + 300) drawShop(px, py, px < W/2);
-          else if (rand() < 0.2) drawTree(px, py);
-        } else if (zone === 'residential') {
-          if (distToRoad < half + 250) drawHouse(px, py, px < W/2);
-          else if (rand() < 0.5) drawTree(px, py);
+        if (isUpsideDown) {
+          if (distToRoad < half + 400 && rand() < 0.3) {
+            if (rand() < 0.6) drawTwistedRoot(px, py);
+            else drawFloatingRock(px, py);
+          } else if (rand() < 0.05) {
+             drawFloatingRock(px, py); // Occasional distant debris
+          }
         } else {
-          // Edge / Forest
-          if (rand() < 0.7) drawTree(px, py);
-          else drawBush(px, py);
+          const zone = getZone(px, py);
+          if (zone === 'downtown') {
+            if (distToRoad < half + 300) drawShop(px, py, px < W/2);
+            else if (rand() < 0.2) drawTree(px, py);
+          } else if (zone === 'residential') {
+            if (distToRoad < half + 250) drawHouse(px, py, px < W/2);
+            else if (rand() < 0.5) drawTree(px, py);
+          } else {
+            // Edge / Forest
+            if (rand() < 0.7) drawTree(px, py);
+            else drawBush(px, py);
+          }
         }
       }
     }
 
-    // Place Water Tower in Edge zone
-    drawWaterTower(1400, 900);
+    if (!isUpsideDown) {
+      // Place Water Tower in Edge zone
+      drawWaterTower(1400, 900);
+    }
 
     // 3. Draw Road
     const stamp = (radius: number, color: number, alpha = 1) => {
@@ -121,72 +177,98 @@ export class TrackRenderer {
       for (const p of centerline) g.fillCircle(p.x, p.y, radius);
     };
     
-    stamp(half + 40, 0x110c1f, 1.0); // Sidewalk
-    stamp(half + 5, 0x2a1c40, 1.0);  // Curb
-    stamp(half, 0x0a0a0f, 1.0);      // Asphalt
+    if (isUpsideDown) {
+      stamp(half + 40, 0x11050a, 1.0); // Dark crimson corrupted edge
+      
+      // Glowing red cracks along the edges
+      g.lineStyle(3, 0xff1144, 0.8);
+      for (const p of centerline) {
+        if (rand() < 0.1) {
+          g.lineBetween(p.x + half + 20, p.y, p.x + half + 30 + rand()*20, p.y + (rand()-0.5)*30);
+        }
+        if (rand() < 0.1) {
+          g.lineBetween(p.x - half - 20, p.y, p.x - half - 30 - rand()*20, p.y + (rand()-0.5)*30);
+        }
+      }
+      stamp(half, 0x050205, 1.0);      // Black cracked asphalt
+    } else {
+      stamp(half + 40, 0x110c1f, 1.0); // Sidewalk
+      stamp(half + 5, 0x2a1c40, 1.0);  // Curb
+      stamp(half, 0x0a0a0f, 1.0);      // Asphalt
+    }
     
     // Road wear / puddles
     for (const p of centerline) {
-      if (rand() < 0.3) {
-        g.fillStyle(0x161622, 0.4).fillEllipse(p.x + (rand()-0.5)*half, p.y + (rand()-0.5)*half, rand()*80+40, rand()*40+20);
-      }
-      const zone = getZone(p.x, p.y);
-      if (zone === 'downtown' && rand() < 0.15) {
-        g.fillStyle(0xff2a5f, 0.1).fillEllipse(p.x, p.y, 120, 40); // Neon reflections
+      if (isUpsideDown) {
+        if (rand() < 0.4) {
+          g.fillStyle(0x0a0005, 0.6).fillEllipse(p.x + (rand()-0.5)*half, p.y + (rand()-0.5)*half, rand()*60+20, rand()*30+10);
+        }
+      } else {
+        if (rand() < 0.3) {
+          g.fillStyle(0x161622, 0.4).fillEllipse(p.x + (rand()-0.5)*half, p.y + (rand()-0.5)*half, rand()*80+40, rand()*40+20);
+        }
+        const zone = getZone(p.x, p.y);
+        if (zone === 'downtown' && rand() < 0.15) {
+          g.fillStyle(0xff2a5f, 0.1).fillEllipse(p.x, p.y, 120, 40); // Neon reflections
+        }
       }
     }
 
     // Center lines
-    g.lineStyle(4, 0xcc9900, 0.6);
-    for (let i = 0; i < centerline.length; i++) {
-      if (Math.floor(i / 3) % 2 !== 0) continue;
-      const a = centerline[i], b = centerline[(i + 1) % centerline.length];
-      g.lineBetween(a.x, a.y, b.x, b.y);
+    if (!isUpsideDown) {
+      g.lineStyle(4, 0xcc9900, 0.6);
+      for (let i = 0; i < centerline.length; i++) {
+        if (Math.floor(i / 3) % 2 !== 0) continue;
+        const a = centerline[i], b = centerline[(i + 1) % centerline.length];
+        g.lineBetween(a.x, a.y, b.x, b.y);
+      }
     }
 
     // 4. Props along road edge
     const poles: Point[] = [];
-    for (let i = 0; i < centerline.length; i += 12) {
-      const p = centerline[i];
-      const next = centerline[(i + 1) % centerline.length];
-      const dx = next.x - p.x, dy = next.y - p.y;
-      const len = Math.sqrt(dx * dx + dy * dy);
-      const nx = -dy / len, ny = dx / len;
-      const side = (i % 24 === 0) ? 1 : -1;
-      const ox = p.x + nx * (half + 25) * side;
-      const oy = p.y + ny * (half + 25) * side;
+    if (!isUpsideDown) {
+      for (let i = 0; i < centerline.length; i += 12) {
+        const p = centerline[i];
+        const next = centerline[(i + 1) % centerline.length];
+        const dx = next.x - p.x, dy = next.y - p.y;
+        const len = Math.sqrt(dx * dx + dy * dy);
+        const nx = -dy / len, ny = dx / len;
+        const side = (i % 24 === 0) ? 1 : -1;
+        const ox = p.x + nx * (half + 25) * side;
+        const oy = p.y + ny * (half + 25) * side;
 
-      const zone = getZone(p.x, p.y);
-      
-      if (zone === 'downtown') {
-        if (rand() < 0.3) {
-          drawStreetLamp(ox, oy);
-          if (rand() < 0.6) drawParkedCar(ox - nx * 15, oy - ny * 15, Math.atan2(dy, dx));
-        } else if (rand() < 0.2) {
-          poles.push({ x: ox, y: oy });
-          g.fillStyle(0x050505).fillCircle(ox, oy, 4);
-        }
-      } else if (zone === 'residential') {
-        if (rand() < 0.2) {
-          drawStreetLamp(ox, oy);
-        } else if (rand() < 0.4) {
-          g.fillStyle(0x442211).fillRect(ox - 2, oy - 2, 4, 10); // Mailbox
-        }
-      } else {
-        if (rand() < 0.2) {
-          poles.push({ x: ox, y: oy });
-          g.fillStyle(0x050505).fillCircle(ox, oy, 4);
-        } else if (rand() < 0.5) {
-          drawBush(ox, oy);
+        const zone = getZone(p.x, p.y);
+        
+        if (zone === 'downtown') {
+          if (rand() < 0.3) {
+            drawStreetLamp(ox, oy);
+            if (rand() < 0.6) drawParkedCar(ox - nx * 15, oy - ny * 15, Math.atan2(dy, dx));
+          } else if (rand() < 0.2) {
+            poles.push({ x: ox, y: oy });
+            g.fillStyle(0x050505).fillCircle(ox, oy, 4);
+          }
+        } else if (zone === 'residential') {
+          if (rand() < 0.2) {
+            drawStreetLamp(ox, oy);
+          } else if (rand() < 0.4) {
+            g.fillStyle(0x442211).fillRect(ox - 2, oy - 2, 4, 10); // Mailbox
+          }
+        } else {
+          if (rand() < 0.2) {
+            poles.push({ x: ox, y: oy });
+            g.fillStyle(0x050505).fillCircle(ox, oy, 4);
+          } else if (rand() < 0.5) {
+            drawBush(ox, oy);
+          }
         }
       }
-    }
 
-    // Wires
-    g.lineStyle(1, 0x000000, 0.6);
-    for (let i = 0; i < poles.length - 1; i++) {
-      if (Math.hypot(poles[i].x - poles[i+1].x, poles[i].y - poles[i+1].y) < 400) {
-        g.lineBetween(poles[i].x, poles[i].y, poles[i+1].x, poles[i+1].y);
+      // Wires
+      g.lineStyle(1, 0x000000, 0.6);
+      for (let i = 0; i < poles.length - 1; i++) {
+        if (Math.hypot(poles[i].x - poles[i+1].x, poles[i].y - poles[i+1].y) < 400) {
+          g.lineBetween(poles[i].x, poles[i].y, poles[i+1].x, poles[i+1].y);
+        }
       }
     }
 
@@ -199,7 +281,7 @@ export class TrackRenderer {
       y: startP.y + startDir.y * forwardOffset + startNorm.y * sideOffset
     });
 
-    g.fillStyle(0xffffff, 0.8);
+    g.fillStyle(isUpsideDown ? 0xff2244 : 0xffffff, 0.8);
     // Draw thick white line exactly at the gate
     g.fillPoints([
       getGridPos(-4, -half), getGridPos(4, -half),
@@ -207,7 +289,7 @@ export class TrackRenderer {
     ], true);
     
     // Draw starting slots
-    g.lineStyle(2, 0xffffff, 0.5);
+    g.lineStyle(2, isUpsideDown ? 0xff2244 : 0xffffff, 0.5);
     for (let grid = 1; grid <= 4; grid++) {
       // Cars spawn backwards from the finish line
       const backOffset = -grid * 120;
@@ -228,13 +310,13 @@ export class TrackRenderer {
       g.strokePath();
     }
 
-    TrackRenderer.drawFinishLine(g, layout);
+    TrackRenderer.drawFinishLine(g, layout, isUpsideDown);
 
-    g.generateTexture(TRACK_TEXTURE, W, H);
+    g.generateTexture(textureKey, W, H);
     g.destroy();
   }
 
-  private static drawFinishLine(g: Phaser.GameObjects.Graphics, layout: TrackLayout): void {
+  private static drawFinishLine(g: Phaser.GameObjects.Graphics, layout: TrackLayout, isUpsideDown: boolean = false): void {
     const { center, direction, normal } = layout.finishGate;
     const cols = 16;
     const rows = 2;
@@ -247,7 +329,9 @@ export class TrackRenderer {
           x: center.x + normal.x * (u + du) + direction.x * (v + dv),
           y: center.y + normal.y * (u + du) + direction.y * (v + dv),
         });
-        g.fillStyle((r + c) % 2 === 0 ? 0xffffff : 0x111111, 0.8);
+        const light = isUpsideDown ? 0xff2244 : 0xffffff;
+        const dark = isUpsideDown ? 0x220505 : 0x111111;
+        g.fillStyle((r + c) % 2 === 0 ? light : dark, 0.8);
         g.fillPoints([corner(0, 0), corner(cell, 0), corner(cell, cell), corner(0, cell)], true);
       }
     }

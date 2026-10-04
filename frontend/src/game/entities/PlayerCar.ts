@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import type { RaceCarConfig } from '../bridge';
-import { createCarTuning } from '../config/carTuning';
+import { getCarTuning } from '../config/carTuning';
 import { CAR } from '../config/GameConfig';
 import { CarPhysics } from './CarPhysics';
 
@@ -16,7 +16,7 @@ export class PlayerCar {
   private exhaustEmitter!: Phaser.GameObjects.Particles.ParticleEmitter;
 
   constructor(scene: Phaser.Scene, car: RaceCarConfig, worldWidth: number, worldHeight: number) {
-    this.physics = new CarPhysics(createCarTuning(car.stats));
+    this.physics = new CarPhysics(getCarTuning(car.id));
     const key = PlayerCar.ensureTexture(scene, car);
     
     // Tire marks layer (persists)

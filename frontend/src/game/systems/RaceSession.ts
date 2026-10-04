@@ -1,4 +1,4 @@
-import { RACE } from '../config/GameConfig';
+import { RACE, CAR } from '../config/GameConfig';
 import type { Point } from '../config/tracks';
 import type { RaceResult } from '../bridge';
 import { CarPhysics, NO_INPUT, type InputState } from '../entities/CarPhysics';
@@ -41,14 +41,14 @@ export class RaceSession {
     const surface = this.layout.getSurface(this.car.x, this.car.y);
     this.car.step(dt, this.race.isRacing ? input : NO_INPUT, surface.dragMultiplier);
 
-    const hit = this.layout.resolveBoundary(this.car.x, this.car.y, this.car.tuning.collisionRadius);
+    const hit = this.layout.resolveBoundary(this.car.x, this.car.y, CAR.collisionRadius);
     if (hit) this.car.applyCollision(hit);
 
     this.race.update(dt * 1000, prev, { x: this.car.x, y: this.car.y });
   }
 
   hudData(): HudData {
-    return { ...this.race.snapshot(), speedKmh: Math.round(this.car.speed * this.car.tuning.speedDisplayFactor) };
+    return { ...this.race.snapshot(), speedKmh: Math.round(this.car.speed * CAR.speedDisplayFactor) };
   }
 
   /** Final result once the race is finished, otherwise null. */

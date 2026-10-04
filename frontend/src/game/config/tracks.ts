@@ -19,6 +19,8 @@ export interface TrackDefinition {
   /** How many samples behind the finish line the car spawns. */
   spawnSamplesBehind: number;
   checkpointCount: number;
+  /** Optional ranges of track distance (0..1) where the track twists. */
+  antiGravityRanges?: readonly { start: number; end: number; twist: number }[];
 }
 
 export const HAWKINS_STREETS: TrackDefinition = {
@@ -48,9 +50,39 @@ export const HAWKINS_STREETS: TrackDefinition = {
   checkpointCount: 4,
 };
 
+export const UPSIDE_DOWN: TrackDefinition = {
+  id: 'upside-down',
+  name: 'The Upside Down',
+  worldWidth: 3200,
+  worldHeight: 3200,
+  roadWidth: 200,
+  controlPoints: [
+    { x: 1600, y: 2800 },
+    { x: 800,  y: 2800 },
+    { x: 400,  y: 2400 },
+    { x: 400,  y: 1600 }, // Wall ride section
+    { x: 800,  y: 800 },
+    { x: 1600, y: 400 },  // Ceiling section
+    { x: 2400, y: 800 },
+    { x: 2800, y: 1600 }, // Drop down
+    { x: 2800, y: 2400 },
+    { x: 2400, y: 2800 },
+  ],
+  samplesPerSegment: 40,
+  finishSampleOffset: 15,
+  spawnSamplesBehind: 10,
+  checkpointCount: 4,
+  antiGravityRanges: [
+    { start: 0.2, end: 0.4, twist: -Math.PI / 6 }, // Drive on left wall
+    { start: 0.4, end: 0.6, twist: Math.PI },      // Drive on ceiling (inverted)
+    { start: 0.6, end: 0.8, twist: Math.PI / 6 },  // Drive on right wall
+  ],
+};
+
 /** Every playable track, keyed by id. Add new tracks here. */
 export const TRACKS: Readonly<Record<string, TrackDefinition>> = {
   [HAWKINS_STREETS.id]: HAWKINS_STREETS,
+  [UPSIDE_DOWN.id]: UPSIDE_DOWN,
 };
 
 export function getTrackDefinition(id: string): TrackDefinition {

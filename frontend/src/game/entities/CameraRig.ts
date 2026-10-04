@@ -56,9 +56,9 @@ export class CameraRig {
     this.easeZoom(CAMERA.views[this.viewIndex].zoom);
   }
 
-  update(car: CarPhysics, speed: number, deltaMs: number): void {
+  update(car: CarPhysics, speed: number, deltaMs: number, antiGravityTwist: number = 0): void {
     const dt = deltaMs / 1000;
-    const target = this.desired(car, speed);
+    const target = this.desired(car, speed, antiGravityTwist);
 
     // scrollX/scrollY is the world point at the viewport's top-left, so the
     // target has to be shifted by half the viewport to centre it on the target.
@@ -88,13 +88,13 @@ export class CameraRig {
     return CAMERA.views[this.viewIndex].zoom;
   }
 
-  private desired(car: CarPhysics, speed: number): { x: number; y: number; rotation: number } {
+  private desired(car: CarPhysics, speed: number, twist: number = 0): { x: number; y: number; rotation: number } {
     const view = CAMERA.views[this.viewIndex];
     const ahead = view.lookAhead + speed * view.speedLookAhead;
     return {
       x: car.x + Math.cos(car.heading) * ahead,
       y: car.y + Math.sin(car.heading) * ahead,
-      rotation: view.rotate ? FORWARD_TO_SCREEN_UP - car.heading : 0,
+      rotation: view.rotate ? FORWARD_TO_SCREEN_UP - car.heading + twist : twist,
     };
   }
 

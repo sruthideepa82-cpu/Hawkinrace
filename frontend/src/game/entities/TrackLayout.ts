@@ -59,6 +59,35 @@ export class TrackLayout {
     return new Gate(this.centerline[i], this.directionAt(i), this.roadWidth / 2 + 80);
   }
 
+  getAntiGravityTwist(x: number, y: number): number {
+    const ranges = this.definition.antiGravityRanges;
+    if (!ranges || ranges.length === 0) return 0;
+
+    const { fraction } = nearestOnClosedPolyline(this.centerline, x, y);
+    
+    for (const r of ranges) {
+      // Add blend zone (0.05 of track) for smooth transition
+      const blend = 0.05;
+      if (fraction >= r.start - blend && fraction <= r.end + blend) {
+        if (fraction < r.start) {
+          // Smoothly ramp up
+          const t = (fraction - (r.start - blend)) / blend;
+          // Ease in-out
+          const ease = t * t * (3 - 2 * t);
+          return r.twist * ease;
+        } else if (fraction > r.end) {
+          // Smoothly ramp down
+          const t = ((r.end + blend) - fraction) / blend;
+          const ease = t * t * (3 - 2 * t);
+          return r.twist * ease;
+        } else {
+          return r.twist;
+        }
+      }
+    }
+    return 0;
+  }
+
   getSurface(x: number, y: number): SurfaceData {
     const { distance } = nearestOnClosedPolyline(this.centerline, x, y);
     const half = this.roadWidth / 2;

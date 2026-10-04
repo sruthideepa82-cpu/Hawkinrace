@@ -113,12 +113,35 @@ export class GameScene extends Phaser.Scene {
         blendMode: 'ADD'
       });
       particles.setDepth(10);
-      
-      // We'll update particle emitter position to follow camera in update loop
       this.rainEmitter = particles;
 
       // Subtle fog overlay
       this.add.rectangle(0, 0, layout.worldWidth, layout.worldHeight, 0x07061a, 0.2).setOrigin(0, 0).setDepth(5).setBlendMode(Phaser.BlendModes.SCREEN);
+    } else if (this.bridge.config.trackId === 'upside-down') {
+      // Generate spore texture
+      const rg = this.make.graphics({x:0, y:0}, false);
+      rg.fillStyle(0xffaabb, 0.6);
+      rg.fillCircle(2, 2, 2);
+      rg.generateTexture('spore', 4, 4);
+      rg.destroy();
+
+      // Floating spores attached to camera
+      const particles = this.add.particles(0, 0, 'spore', {
+        x: { min: -1000, max: 2000 },
+        y: { min: -1000, max: 1500 },
+        lifespan: 4000,
+        speedY: { min: -30, max: 30 },
+        speedX: { min: -40, max: 20 },
+        scale: { start: 0, end: 1.5, ease: 'Sine.easeInOut' },
+        alpha: { start: 0, end: 0.8, ease: 'Sine.easeInOut' },
+        quantity: 1,
+        blendMode: 'SCREEN'
+      });
+      particles.setDepth(10);
+      this.rainEmitter = particles; // Reusing the rainEmitter reference to follow camera
+
+      // Deep red/crimson fog overlay
+      this.add.rectangle(0, 0, layout.worldWidth, layout.worldHeight, 0x1f000a, 0.25).setOrigin(0, 0).setDepth(5).setBlendMode(Phaser.BlendModes.SCREEN);
     }
 
     // Chase camera: sits ahead of the car and turns with it (see CameraRig).
@@ -145,7 +168,14 @@ export class GameScene extends Phaser.Scene {
 
     const speed = this.playerCar.physics.speed;
     this.playerCar.sync(input.brake, input.accelerate, speed);
-    this.cameraRig.update(this.playerCar.physics, speed, deltaMs);
+    
+    // Anti-gravity twist logic (only if not finished)
+    let twist = 0;
+    if (this.session.race.snapshot().state !== 'finished') {
+      twist = this.session.layout.getAntiGravityTwist(this.playerCar.physics.x, this.playerCar.physics.y);
+    }
+    
+    this.cameraRig.update(this.playerCar.physics, speed, deltaMs, twist);
 
     if (this.rainEmitter) {
       this.rainEmitter.setPosition(this.cameras.main.scrollX + this.cameras.main.width / 2, this.cameras.main.scrollY);

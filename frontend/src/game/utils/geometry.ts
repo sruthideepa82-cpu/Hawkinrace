@@ -27,12 +27,16 @@ export function smoothClosedLoop(points: readonly Point[], samplesPerSegment: nu
 export interface NearestResult {
   distance: number;
   point: Point;
+  index: number;
+  fraction: number; // 0..1 representing how far along the total track this is
 }
 
 /** Nearest point on a closed polyline to (x, y). */
 export function nearestOnClosedPolyline(path: readonly Point[], x: number, y: number): NearestResult {
   let bestDist2 = Infinity;
   let best: Point = path[0];
+  let bestIndex = 0;
+  let bestT = 0;
   const n = path.length;
   for (let i = 0; i < n; i++) {
     const a = path[i];
@@ -47,9 +51,11 @@ export function nearestOnClosedPolyline(path: readonly Point[], x: number, y: nu
     if (d2 < bestDist2) {
       bestDist2 = d2;
       best = { x: px, y: py };
+      bestIndex = i;
+      bestT = t;
     }
   }
-  return { distance: Math.sqrt(bestDist2), point: best };
+  return { distance: Math.sqrt(bestDist2), point: best, index: bestIndex, fraction: (bestIndex + bestT) / n };
 }
 
 export function wrapIndex(i: number, length: number): number {
