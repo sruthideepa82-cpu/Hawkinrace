@@ -119,7 +119,8 @@ export class GameScene extends Phaser.Scene {
       this.add.rectangle(0, 0, layout.worldWidth, layout.worldHeight, 0x1f000a, 0.25).setOrigin(0, 0).setDepth(5).setBlendMode(Phaser.BlendModes.SCREEN);
     }
 
-    // Chase camera: sits ahead of the car and turns with it (see CameraRig).
+    // Chase camera: pins the car to a fixed spot on screen and only tilts the
+    // world once it has genuinely turned (see CameraRig).
     this.cameraRig = new CameraRig(cam);
     this.cameraRig.snap(this.session.player.physics);
 

@@ -182,6 +182,11 @@ export function angleDelta(from: number, to: number): number {
   return d;
 }
 
+/** Normalises an angle into (-PI, PI] so a stored angle cannot drift over time. */
+export function wrapAngle(angle: number): number {
+  return angleDelta(0, angle);
+}
+
 export function clamp(value: number, min: number, max: number): number {
   return value < min ? min : value > max ? max : value;
 }

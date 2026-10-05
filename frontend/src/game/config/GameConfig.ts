@@ -103,19 +103,35 @@ export const RACE = {
 export const CAMERA = {
   /** Frame-rate independent follow smoothing (higher = snappier). */
   follow: 12,
-  /** Same, for the camera's rotation. */
-  rotateFollow: 10,
+  /**
+   * How hard the camera is pulled back toward the car's heading once it has
+   * turned past the dead zone (1/s). Because the pull grows from zero at the
+   * edge of the zone, a small turn eases the world around gently instead of
+   * snapping it.
+   */
+  rotateGain: 5,
+  /**
+   * Hard ceiling on how fast the world may rotate (rad/s), whatever the car
+   * does. Without it a spin would whip the whole view around.
+   */
+  maxRotateSpeed: 2,
   /**
    * Camera presets, cycled with CONTROLS.camera.
-   * lookAhead: world px the camera sits ahead of the car (which keeps the car low
-   * in the frame so more road is visible). speedLookAhead: extra px per px/s of
-   * speed, so the view reaches further ahead the faster you drive.
+   *
+   * anchor: where the car rests, as a fraction of the visible half-height below
+   *   the screen centre (0 = dead centre, 0.5 = three quarters down). It is a
+   *   fraction rather than a world distance so the car keeps the same spot on
+   *   screen when the camera pulls back for speed, and it is measured in the
+   *   camera's own frame so it cannot be slung off when the world rotates.
    * rotate: turn the world with the car so it always faces up the screen.
+   * angleDeadZoneDeg: turning less than this leaves the world completely still,
+   *   so ordinary steering corrections never move the background.
    */
   views: [
-    { name: 'CHASE', lookAhead: 150, speedLookAhead: 0.35, zoom: 0.85, rotate: true },
-    { name: 'HOOD', lookAhead: 80, speedLookAhead: 0.2, zoom: 1.1, rotate: true },
-    { name: 'MAP', lookAhead: 0, speedLookAhead: 0, zoom: 0.5, rotate: false },
+    { name: 'CHASE', anchor: 0.22, zoom: 0.85, rotate: true, angleDeadZoneDeg: 12 },
+    { name: 'HOOD', anchor: 0.1, zoom: 1.1, rotate: true, angleDeadZoneDeg: 4 },
+    // Overhead: no rotation, the car just sits in the middle of the frame.
+    { name: 'MAP', anchor: 0, zoom: 0.5, rotate: false, angleDeadZoneDeg: 0 },
   ],
   /** Forward speed (px/s) above which the camera pulls back for a speed feel. */
   speedThreshold: 400,

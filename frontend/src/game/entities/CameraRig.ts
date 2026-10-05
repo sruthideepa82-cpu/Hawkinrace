@@ -1,6 +1,6 @@
-import Phaser from 'phaser';
 import { CAMERA } from '../config/GameConfig';
 import type { CarPhysics } from './CarPhysics';
+import { angleDelta, clamp, wrapAngle } from '../utils/geometry';
 
 /**
  * Rotating the camera by this much puts the car's forward direction (heading 0 =
@@ -8,11 +8,39 @@ import type { CarPhysics } from './CarPhysics';
  */
 const FORWARD_TO_SCREEN_UP = -Math.PI / 2;
 
+const DEG = Math.PI / 180;
+
 /**
- * Third-person chase camera. Instead of parking on top of the car, the rig sits
- * ahead of it and turns with it, so the car sits low in the frame and the road
- * in front stays visible. The view also reaches further ahead the faster you
- * drive, which is what makes the corner after a straight readable.
+ * The slice of Phaser's Camera the rig drives. Spelling it out keeps the rig
+ * free of Phaser at runtime, so tools/cameraProbe.ts can fly it headlessly.
+ */
+export interface CameraTarget {
+  readonly width: number;
+  readonly height: number;
+  scrollX: number;
+  scrollY: number;
+  readonly zoom: number;
+  setZoom(value: number): unknown;
+  setRotation(radians: number): unknown;
+  centerOn(x: number, y: number): unknown;
+  zoomTo(zoom: number, duration?: number, ease?: string, force?: boolean): unknown;
+  shake(duration?: number, intensity?: number): unknown;
+}
+
+/**
+ * Third-person chase camera.
+ *
+ * Two ideas keep it readable at speed:
+ *
+ * 1. The car is pinned to a fixed point *on screen*, not to a world point a
+ *    set distance ahead of it. A world-space target runs away from the car as
+ *    it accelerates and sweeps wide around it when it turns, which is how the
+ *    car ends up off screen; an on-screen anchor cannot be thrown off, whatever
+ *    the car does.
+ * 2. The world only tilts once the car has genuinely turned. Inside a dead zone
+ *    the rotation is frozen, and outside it the camera eases after the car at a
+ *    bounded speed, so the background settles into a corner instead of spinning
+ *    with every steering input.
  *
  * Cycle between CHASE / HOOD / MAP with the camera key (CONTROLS.camera).
  */
@@ -23,7 +51,7 @@ export class CameraRig {
   private zoomTarget: number = CAMERA.views[0].zoom;
   private speeding = false;
 
-  constructor(private readonly camera: Phaser.Cameras.Scene2D.Camera) {}
+  constructor(private readonly camera: CameraTarget) {}
 
   /** Name of the active preset, shown on the HUD. */
   get viewName(): string {
@@ -42,9 +70,10 @@ export class CameraRig {
     this.zoomTarget = CAMERA.views[this.viewIndex].zoom;
     this.camera.setZoom(this.zoomTarget);
 
-    const target = this.desired(car, 0);
-    this.rotation = target.rotation;
+    this.rotation = wrapAngle(this.idealRotation(car, 0));
     this.camera.setRotation(this.rotation);
+
+    const target = this.followTarget(car);
     this.camera.centerOn(target.x, target.y);
   }
 
@@ -58,22 +87,17 @@ export class CameraRig {
 
   update(car: CarPhysics, speed: number, deltaMs: number, antiGravityTwist: number = 0): void {
     const dt = deltaMs / 1000;
-    const target = this.desired(car, speed, antiGravityTwist);
+
+    // Rotation first: the on-screen anchor is solved in the camera's own frame,
+    // so it needs this frame's rotation rather than the previous frame's.
+    this.stepRotation(car, antiGravityTwist, dt);
 
     // scrollX/scrollY is the world point at the viewport's top-left, so the
-    // target has to be shifted by half the viewport to centre it on the target.
+    // target has to be shifted by half the viewport to centre it on the anchor.
+    const target = this.followTarget(car);
     const follow = 1 - Math.exp(-CAMERA.follow * dt);
     this.camera.scrollX += (target.x - this.camera.width / 2 - this.camera.scrollX) * follow;
     this.camera.scrollY += (target.y - this.camera.height / 2 - this.camera.scrollY) * follow;
-
-    if (CAMERA.views[this.viewIndex].rotate) {
-      // Take the short way round so a full spin does not unwind the camera.
-      const diff = Phaser.Math.Angle.ShortestBetween(this.rotation, target.rotation);
-      this.rotation += diff * (1 - Math.exp(-CAMERA.rotateFollow * dt));
-    } else {
-      this.rotation = target.rotation;
-    }
-    this.camera.setRotation(this.rotation);
 
     // Speed feel: pull back and rumble once when crossing into the fast range.
     const speeding = speed > CAMERA.speedThreshold;
@@ -84,18 +108,65 @@ export class CameraRig {
     }
   }
 
-  private get viewZoom(): number {
-    return CAMERA.views[this.viewIndex].zoom;
+  /**
+   * Where the camera should end up to put the car on its screen anchor. The car
+   * rests `anchorOffset` px below the screen centre, so the point sits behind
+   * the car along the camera's own "up" axis rather than the car's heading --
+   * that is what keeps it fixed on screen while the world turns.
+   *
+   * The car's velocity is led by one smoothing time constant. The follow easing
+   * always trails a moving target by `v / follow`, and without this lead that
+   * trail is the car itself creeping up the screen as it speeds up; leading by
+   * the same amount cancels it, so the camera moves with the car.
+   */
+  private followTarget(car: CarPhysics): { x: number; y: number } {
+    const offset = this.anchorOffset();
+    const lead = 1 / CAMERA.follow;
+    return {
+      x: car.x + car.vx * lead - offset * Math.sin(this.rotation),
+      y: car.y + car.vy * lead - offset * Math.cos(this.rotation),
+    };
   }
 
-  private desired(car: CarPhysics, speed: number, twist: number = 0): { x: number; y: number; rotation: number } {
+  /**
+   * World-space distance from the screen centre down to where the car rests. A
+   * fraction of the visible half-height, so the car holds the same spot on
+   * screen when the camera pulls back for speed.
+   */
+  private anchorOffset(): number {
     const view = CAMERA.views[this.viewIndex];
-    const ahead = view.lookAhead + speed * view.speedLookAhead;
-    return {
-      x: car.x + Math.cos(car.heading) * ahead,
-      y: car.y + Math.sin(car.heading) * ahead,
-      rotation: view.rotate ? FORWARD_TO_SCREEN_UP - car.heading + twist : twist,
-    };
+    return (view.anchor * this.camera.height) / (2 * this.camera.zoom);
+  }
+
+  /** Rotation the world needs for the car to point up the screen. */
+  private idealRotation(car: CarPhysics, twist: number): number {
+    return CAMERA.views[this.viewIndex].rotate ? FORWARD_TO_SCREEN_UP - car.heading + twist : twist;
+  }
+
+  private stepRotation(car: CarPhysics, twist: number, dt: number): void {
+    const view = CAMERA.views[this.viewIndex];
+    if (!view.rotate) {
+      this.rotation = wrapAngle(twist);
+      return;
+    }
+
+    // Take the short way round so a full spin does not unwind the camera.
+    const deviation = angleDelta(this.rotation, this.idealRotation(car, twist));
+
+    // Inside the dead zone the world is left completely alone: ordinary
+    // steering corrections must not move the background at all. Past it the
+    // pull eases in from zero and is capped, so the world can never rotate
+    // faster than maxRotateSpeed however hard the car is turned.
+    const excess = Math.abs(deviation) - view.angleDeadZoneDeg * DEG;
+    if (excess <= 0) return;
+
+    const rate = clamp(excess * CAMERA.rotateGain, 0, CAMERA.maxRotateSpeed);
+    const step = Math.sign(deviation) * Math.min(excess, rate * dt);
+    this.rotation = wrapAngle(this.rotation + step);
+  }
+
+  private get viewZoom(): number {
+    return CAMERA.views[this.viewIndex].zoom;
   }
 
   private easeZoom(zoom: number): void {
