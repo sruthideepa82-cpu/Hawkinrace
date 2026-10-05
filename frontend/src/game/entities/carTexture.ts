@@ -1,4 +1,4 @@
-import type Phaser from 'phaser';
+import Phaser from 'phaser';
 import { CAR } from '../config/GameConfig';
 
 /**
@@ -6,54 +6,105 @@ import { CAR } from '../config/GameConfig';
  * chassis always looks the same, whichever driver is in it.
  */
 export function ensureCarTexture(scene: Phaser.Scene, carId: string, color: number): string {
-  // The colour is part of the key so two drivers sharing a chassis still get
-  // visibly different cars.
   const key = `car-${carId}-${color}`;
   if (scene.textures.exists(key)) return key;
 
   const { width: w, height: h } = CAR;
+  const pad = 12; // padding for shadow/glow
+  
+  // Faux 3D light calculation helpers (top-down, front is right)
+  const darken = (c: number, amt: number) => Phaser.Display.Color.IntegerToColor(c).darken(amt).color;
+  const lighten = (c: number, amt: number) => Phaser.Display.Color.IntegerToColor(c).lighten(amt).color;
+  
+  const roofColor = lighten(color, 15);
+  const sideColor = darken(color, 10);
+  const backColor = darken(color, 25);
+  const frontColor = lighten(color, 5);
+  const windowColor = 0x1a1525;
+  const bumperColor = 0x111111;
+
   const g = scene.add.graphics();
 
-  const pad = 10;
-
   // Shadow
-  g.fillStyle(0x000000, 0.6).fillRoundedRect(pad - 4, pad + 4, w + 8, h + 8, 8);
+  g.fillStyle(0x000000, 0.5).fillRoundedRect(pad - 4, pad + 6, w + 8, h + 8, 4);
 
-  // Body glow
-  g.fillStyle(color, 0.3).fillRoundedRect(pad - 5, pad - 5, w + 10, h + 10, 10);
+  // Wheels (4 rectangles)
+  g.fillStyle(0x0a0a0a);
+  const ww = w * 0.18; // wheel width
+  const wh = h * 0.25; // wheel height/protrusion
+  g.fillRoundedRect(pad + w * 0.15, pad - wh*0.8, ww, wh, 2); // Rear left
+  g.fillRoundedRect(pad + w * 0.15, pad + h - wh*0.2, ww, wh, 2); // Rear right
+  g.fillRoundedRect(pad + w * 0.7, pad - wh*0.8, ww, wh, 2); // Front left
+  g.fillRoundedRect(pad + w * 0.7, pad + h - wh*0.2, ww, wh, 2); // Front right
 
-  // Wheels
-  g.fillStyle(0x111111);
-  g.fillRoundedRect(pad + w * 0.15, pad - 2, w * 0.2, h + 4, 2);
-  g.fillRoundedRect(pad + w * 0.65, pad - 2, w * 0.2, h + 4, 2);
+  // Main Chassis (Base body)
+  g.fillStyle(sideColor);
+  g.fillRoundedRect(pad, pad, w, h, 4);
+  
+  // Front slope / Hood
+  g.fillStyle(frontColor);
+  g.fillPoints([{x: pad + w * 0.6, y: pad}, {x: pad + w, y: pad + 2}, {x: pad + w, y: pad + h - 2}, {x: pad + w * 0.6, y: pad + h}], true);
 
-  g.fillStyle(color);
+  // Rear slope / Trunk
+  g.fillStyle(backColor);
+  g.fillPoints([{x: pad, y: pad + 2}, {x: pad + w * 0.2, y: pad}, {x: pad + w * 0.2, y: pad + h}, {x: pad, y: pad + h - 2}], true);
 
-  // Main Body based on chassis id
-  if (carId === 'night-runner') {
-    g.fillPoints([{x: pad, y: pad + 4}, {x: pad + w, y: pad + 8}, {x: pad + w + 4, y: pad + h/2}, {x: pad + w, y: pad + h - 8}, {x: pad, y: pad + h - 4}], true);
-    g.fillStyle(0x050505).fillPoints([{x: pad + w*0.4, y: pad + 4}, {x: pad + w*0.6, y: pad + 6}, {x: pad + w*0.6, y: pad + h - 6}, {x: pad + w*0.4, y: pad + h - 4}], true);
-  } else if (carId === 'hawk-xr') {
-    g.fillRoundedRect(pad, pad - 2, w, h + 4, 4);
-    g.fillStyle(0x111111).fillRect(pad + w*0.2, pad - 2, w*0.6, h + 4);
-    g.fillStyle(0xffffff).fillRect(pad + 5, pad + h/2 - 2, w - 10, 4);
-    g.fillStyle(0x050505).fillRect(pad + w * 0.45, pad - 2, w * 0.15, h + 4);
-  } else {
-    g.fillRoundedRect(pad, pad, w, h, 8);
-    g.fillStyle(0x000000, 0.2).fillRect(pad + w * 0.2, pad, w * 0.6, h);
-    g.fillStyle(0x050505).fillRoundedRect(pad + w * 0.45, pad + 2, w * 0.2, h - 4, 2);
-    g.fillRoundedRect(pad + w * 0.15, pad + 4, w * 0.1, h - 8, 2);
+  // Cabin (Roof and Windows)
+  const cx = pad + w * 0.35; // Cabin start X
+  const cw = w * 0.35;       // Cabin width
+  const cy = pad + h * 0.15; // Cabin Y inset
+  const ch = h * 0.7;        // Cabin height
+  
+  // Windshield
+  g.fillStyle(0x000000); // Window rim
+  g.fillPoints([{x: cx + cw, y: cy}, {x: cx + cw + w*0.15, y: cy + h*0.05}, {x: cx + cw + w*0.15, y: cy + ch - h*0.05}, {x: cx + cw, y: cy + ch}], true);
+  g.fillStyle(windowColor); // Window glass
+  g.fillPoints([{x: cx + cw, y: cy + 1}, {x: cx + cw + w*0.12, y: cy + h*0.08}, {x: cx + cw + w*0.12, y: cy + ch - h*0.08}, {x: cx + cw, y: cy + ch - 1}], true);
+  
+  // Rear window
+  g.fillStyle(0x000000);
+  g.fillPoints([{x: cx - w*0.1, y: cy + h*0.05}, {x: cx, y: cy}, {x: cx, y: cy + ch}, {x: cx - w*0.1, y: cy + ch - h*0.05}], true);
+  g.fillStyle(windowColor);
+  g.fillPoints([{x: cx - w*0.08, y: cy + h*0.08}, {x: cx, y: cy + 1}, {x: cx, y: cy + ch - 1}, {x: cx - w*0.08, y: cy + ch - h*0.08}], true);
+
+  // Side windows
+  g.fillStyle(windowColor);
+  g.fillRect(cx + 2, cy - 2, cw - 4, 3);
+  g.fillRect(cx + 2, cy + ch - 1, cw - 4, 3);
+
+  // Roof
+  g.fillStyle(roofColor);
+  g.fillRoundedRect(cx, cy, cw, ch, 2);
+
+  // Bumpers
+  g.fillStyle(bumperColor);
+  g.fillRect(pad + w - 2, pad + 4, 3, h - 8); // Front bumper
+  g.fillRect(pad - 1, pad + 4, 3, h - 8);     // Rear bumper
+
+  // Spoiler (if not the heavy/truck car)
+  if (carId !== 'truck') {
+    g.fillStyle(0x222222);
+    g.fillRect(pad - 4, pad + 2, 6, h - 4); // Spoiler wing
+    g.fillStyle(color);
+    g.fillRect(pad - 3, pad + 3, 4, h - 6); // Spoiler paint
   }
 
   // Headlights
-  g.fillStyle(0xfff2b0, 0.5).fillCircle(pad + w, pad + h * 0.2, 10).fillCircle(pad + w, pad + h * 0.8, 10);
-  g.fillStyle(0xffffff).fillRect(pad + w - 4, pad + h * 0.15, 4, h * 0.15).fillRect(pad + w - 4, pad + h * 0.7, 4, h * 0.15);
+  g.fillStyle(0xfff5cc);
+  g.fillRect(pad + w - 3, pad + h * 0.15, 3, h * 0.15);
+  g.fillRect(pad + w - 3, pad + h * 0.7, 3, h * 0.15);
+  
+  // Headlight glows (subtle)
+  g.fillStyle(0xfff5cc, 0.3);
+  g.fillCircle(pad + w + 2, pad + h * 0.2, 6);
+  g.fillCircle(pad + w + 2, pad + h * 0.8, 6);
 
-  // Tail lights
-  g.fillStyle(0xff0000, 0.6).fillCircle(pad, pad + h * 0.2, 8).fillCircle(pad, pad + h * 0.8, 8);
-  g.fillStyle(0xff2e63).fillRect(pad, pad + h * 0.15, 3, h * 0.15).fillRect(pad, pad + h * 0.7, 3, h * 0.15);
+  // Taillights
+  g.fillStyle(0xff1133);
+  g.fillRect(pad - 1, pad + h * 0.15, 2, h * 0.2);
+  g.fillRect(pad - 1, pad + h * 0.65, 2, h * 0.2);
 
-  g.generateTexture(key, w + 20, h + 20);
+  g.generateTexture(key, w + pad * 2, h + pad * 2);
   g.destroy();
   return key;
 }

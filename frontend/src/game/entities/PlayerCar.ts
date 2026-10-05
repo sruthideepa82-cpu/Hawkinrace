@@ -12,6 +12,7 @@ export class PlayerCar extends CarView {
   /** Reusable dots stamped into `tireMarks` (created once, never per frame). */
   private tireDots: Phaser.GameObjects.Arc[] = [];
   private exhaustEmitter!: Phaser.GameObjects.Particles.ParticleEmitter;
+  private youLabel!: Phaser.GameObjects.Text;
 
   constructor(scene: Phaser.Scene, config: RacerConfig, worldWidth: number, worldHeight: number) {
     super(scene, config);
@@ -34,11 +35,22 @@ export class PlayerCar extends CarView {
         emitting: false,
       })
       .setDepth(9);
+
+    this.youLabel = scene.add.text(0, 0, 'YOU', {
+      fontFamily: 'monospace',
+      fontSize: '12px',
+      color: '#ffffff',
+      backgroundColor: '#cc113388',
+      padding: { x: 4, y: 2 }
+    }).setOrigin(0.5, 1).setDepth(20);
   }
 
   override sync(physics: CarViewState, opts: CarViewOptions = {}): void {
     const { braking = false, accelerating = false, speed = 0 } = opts;
     super.sync(physics, opts);
+
+    // Sync YOU label
+    this.youLabel.setPosition(physics.x, physics.y - 30);
 
     // Exhaust
     if (accelerating && speed < 150) {

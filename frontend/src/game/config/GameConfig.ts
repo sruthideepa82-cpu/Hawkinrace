@@ -53,8 +53,8 @@ export const CONTROLS = {
 
 /** Base car handling. Units: pixels and seconds. Cars scale these via stats. */
 export const CAR = {
-  width: 44,
-  height: 22,
+  width: 60,
+  height: 30,
   maxSpeed: 560,
   maxReverseSpeed: 150,
   /** Peak forward acceleration; fades out as the car nears max speed. */
@@ -113,9 +113,9 @@ export const CAMERA = {
    * rotate: turn the world with the car so it always faces up the screen.
    */
   views: [
-    { name: 'CHASE', lookAhead: 90, speedLookAhead: 0.22, zoom: 1.1, rotate: true },
-    { name: 'HOOD', lookAhead: 40, speedLookAhead: 0.1, zoom: 1.45, rotate: true },
-    { name: 'MAP', lookAhead: 0, speedLookAhead: 0, zoom: 0.7, rotate: false },
+    { name: 'CHASE', lookAhead: 150, speedLookAhead: 0.35, zoom: 0.85, rotate: true },
+    { name: 'HOOD', lookAhead: 80, speedLookAhead: 0.2, zoom: 1.1, rotate: true },
+    { name: 'MAP', lookAhead: 0, speedLookAhead: 0, zoom: 0.5, rotate: false },
   ],
   /** Forward speed (px/s) above which the camera pulls back for a speed feel. */
   speedThreshold: 400,

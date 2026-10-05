@@ -171,57 +171,80 @@ export class TrackRenderer {
       drawWaterTower(1400, 900);
     }
 
-    // 3. Draw Road
-    const stamp = (radius: number, color: number, alpha = 1) => {
+    // 3. Draw Road using Polygons instead of Stamping
+    const leftPoints: Point[] = [];
+    const rightPoints: Point[] = [];
+    const curbLeftPoints: Point[] = [];
+    const curbRightPoints: Point[] = [];
+    const sidewalkLeftPoints: Point[] = [];
+    const sidewalkRightPoints: Point[] = [];
+
+    const numPoints = centerline.length;
+    for (let i = 0; i < numPoints; i++) {
+      const p = centerline[i];
+      const prev = centerline[(i - 1 + numPoints) % numPoints];
+      const next = centerline[(i + 1) % numPoints];
+      
+      const dx = next.x - prev.x;
+      const dy = next.y - prev.y;
+      const len = Math.hypot(dx, dy);
+      const nx = -dy / len;
+      const ny = dx / len;
+      
+      leftPoints.push({ x: p.x + nx * half, y: p.y + ny * half });
+      rightPoints.push({ x: p.x - nx * half, y: p.y - ny * half });
+      
+      curbLeftPoints.push({ x: p.x + nx * (half + 8), y: p.y + ny * (half + 8) });
+      curbRightPoints.push({ x: p.x - nx * (half + 8), y: p.y - ny * (half + 8) });
+      
+      sidewalkLeftPoints.push({ x: p.x + nx * (half + 40), y: p.y + ny * (half + 40) });
+      sidewalkRightPoints.push({ x: p.x - nx * (half + 40), y: p.y - ny * (half + 40) });
+    }
+
+    const drawPoly = (leftSide: Point[], rightSide: Point[], color: number, alpha: number = 1.0) => {
       g.fillStyle(color, alpha);
-      for (const p of centerline) g.fillCircle(p.x, p.y, radius);
+      const pts = [...leftSide, ...[...rightSide].reverse()];
+      g.fillPoints(pts, true, true);
     };
-    
+
     if (isUpsideDown) {
-      stamp(half + 40, 0x11050a, 1.0); // Dark crimson corrupted edge
+      // Upside down track rendering
+      drawPoly(sidewalkLeftPoints, sidewalkRightPoints, 0x11050a); // Dark crimson corrupted edge
       
       // Glowing red cracks along the edges
       g.lineStyle(3, 0xff1144, 0.8);
-      for (const p of centerline) {
-        if (rand() < 0.1) {
-          g.lineBetween(p.x + half + 20, p.y, p.x + half + 30 + rand()*20, p.y + (rand()-0.5)*30);
-        }
-        if (rand() < 0.1) {
-          g.lineBetween(p.x - half - 20, p.y, p.x - half - 30 - rand()*20, p.y + (rand()-0.5)*30);
-        }
-      }
-      stamp(half, 0x050205, 1.0);      // Black cracked asphalt
+      g.strokePoints(curbLeftPoints, true, true);
+      g.strokePoints(curbRightPoints, true, true);
+      
+      drawPoly(leftPoints, rightPoints, 0x050205); // Black cracked asphalt
     } else {
-      stamp(half + 40, 0x110c1f, 1.0); // Sidewalk
-      stamp(half + 5, 0x2a1c40, 1.0);  // Curb
-      stamp(half, 0x0a0a0f, 1.0);      // Asphalt
+      // Clean wide professional racing circuit
+      drawPoly(sidewalkLeftPoints, sidewalkRightPoints, 0x110c1f); // Sidewalk
+      drawPoly(curbLeftPoints, curbRightPoints, 0xffffff); // White outer boundaries
+      drawPoly(leftPoints, rightPoints, 0x0a0a0f); // Smooth dark asphalt
     }
     
-    // Road wear / puddles
-    for (const p of centerline) {
-      if (isUpsideDown) {
-        if (rand() < 0.4) {
-          g.fillStyle(0x0a0005, 0.6).fillEllipse(p.x + (rand()-0.5)*half, p.y + (rand()-0.5)*half, rand()*60+20, rand()*30+10);
-        }
-      } else {
-        if (rand() < 0.3) {
-          g.fillStyle(0x161622, 0.4).fillEllipse(p.x + (rand()-0.5)*half, p.y + (rand()-0.5)*half, rand()*80+40, rand()*40+20);
+    // Road wear / reflections
+    if (!isUpsideDown) {
+      for (let i = 0; i < numPoints; i += 5) {
+        const p = centerline[i];
+        if (rand() < 0.2) {
+          g.fillStyle(0x161622, 0.3).fillEllipse(p.x + (rand()-0.5)*half, p.y + (rand()-0.5)*half, rand()*80+40, rand()*40+20);
         }
         const zone = getZone(p.x, p.y);
-        if (zone === 'downtown' && rand() < 0.15) {
+        if (zone === 'downtown' && rand() < 0.1) {
           g.fillStyle(0xff2a5f, 0.1).fillEllipse(p.x, p.y, 120, 40); // Neon reflections
         }
       }
     }
 
     // Center lines
-    if (!isUpsideDown) {
-      g.lineStyle(4, 0xcc9900, 0.6);
-      for (let i = 0; i < centerline.length; i++) {
-        if (Math.floor(i / 3) % 2 !== 0) continue;
-        const a = centerline[i], b = centerline[(i + 1) % centerline.length];
-        g.lineBetween(a.x, a.y, b.x, b.y);
-      }
+    g.lineStyle(6, 0xffcc00, 0.8); // Consistent yellow markings
+    for (let i = 0; i < numPoints; i++) {
+      if (Math.floor(i / 3) % 2 !== 0) continue;
+      const a = centerline[i];
+      const b = centerline[(i + 1) % numPoints];
+      g.lineBetween(a.x, a.y, b.x, b.y);
     }
 
     // 4. Props along road edge

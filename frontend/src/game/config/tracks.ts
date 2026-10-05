@@ -28,7 +28,7 @@ export const HAWKINS_STREETS: TrackDefinition = {
   name: 'Hawkins Streets',
   worldWidth: 3600,
   worldHeight: 2800,
-  roadWidth: 220, // slightly wider for town streets
+  roadWidth: 360, // Wide enough for 4 cars
   controlPoints: [
     { x: 1800, y: 2400 }, // Start/finish
     { x: 1000, y: 2400 }, // Main straight
@@ -55,7 +55,7 @@ export const UPSIDE_DOWN: TrackDefinition = {
   name: 'The Upside Down',
   worldWidth: 3200,
   worldHeight: 3200,
-  roadWidth: 200,
+  roadWidth: 360,
   controlPoints: [
     { x: 1600, y: 2800 },
     { x: 800,  y: 2800 },

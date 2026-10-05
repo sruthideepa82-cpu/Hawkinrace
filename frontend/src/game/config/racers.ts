@@ -35,7 +35,6 @@ const AI_PROFILES: Record<string, AiProfile> = {
   max:   { cornerConfidence: 0.99, pace: 0.99, nitroEagerness: 0.30, overtaking: 0.88, stuckSeconds: 1.0, lineBias:  0.20, seed: 0.11 },
   mike:  { cornerConfidence: 1.00, pace: 1.00, nitroEagerness: 0.44, overtaking: 0.72, stuckSeconds: 0.8, lineBias: -0.24, seed: 0.37 },
   dustin:{ cornerConfidence: 0.98, pace: 0.98, nitroEagerness: 0.80, overtaking: 0.96, stuckSeconds: 0.7, lineBias:  0.34, seed: 0.63 },
-  will:  { cornerConfidence: 1.00, pace: 0.99, nitroEagerness: 0.36, overtaking: 0.64, stuckSeconds: 0.9, lineBias: -0.12, seed: 0.82 },
   steve: { cornerConfidence: 0.99, pace: 0.99, nitroEagerness: 0.45, overtaking: 0.76, stuckSeconds: 0.9, lineBias: 0.0,  seed: 0.50 },
 };
 
@@ -64,8 +63,7 @@ const AI_COLORS: Record<string, number> = {
   max: 0xff5c8a,
   mike: 0x9b5cff,
   dustin: 0xffb02e,
-  will: 0x6c7bff,
-  steve: 0xff2e63,
+  steve: 0xcc1133,
 };
 
 /** Chassis handed to AI opponents: the unused cars first, then a repeat. */
