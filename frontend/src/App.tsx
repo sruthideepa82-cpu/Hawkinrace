@@ -5,7 +5,6 @@ import { MainMenuPage } from './pages/MainMenuPage';
 import { ModeSelectPage } from './pages/ModeSelectPage';
 import { PlaceholderPage } from './pages/PlaceholderPage';
 import { RacePage } from './pages/RacePage';
-import { ResultsPage } from './pages/ResultsPage';
 import { TrackSelectPage } from './pages/TrackSelectPage';
 import { GaragePage } from './pages/GaragePage';
 import { GameStoreProvider, useGameStore, type Screen } from './store/GameStore';
@@ -22,14 +21,14 @@ function CurrentScreen({ screen }: { screen: Screen }) {
     case 'car': return <CarSelectPage />;
     case 'track': return <TrackSelectPage />;
     case 'mode': return <ModeSelectPage />;
-    case 'race': return <RacePage />;
-    case 'results': return <ResultsPage />;
+    case 'race':
+    case 'results': return <RacePage />;
   }
 }
 
 function Shell() {
   const { state } = useGameStore();
-  const inRace = state.screen === 'race';
+  const inRace = state.screen === 'race' || state.screen === 'results';
   return (
     <div className="app">
       {!inRace && <AtmosphericBackground />}

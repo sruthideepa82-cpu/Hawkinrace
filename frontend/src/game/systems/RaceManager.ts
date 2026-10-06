@@ -4,7 +4,9 @@
  * on track. The race is over either way, but the two are reported differently,
  * so they stay distinct states all the way to the results screen.
  */
-export type RaceState = 'countdown' | 'racing' | 'finished' | 'failed';
+import { Timer } from './Timer';
+
+export type RaceState = 'intro' | 'countdown' | 'racing' | 'finished' | 'failed';
 
 export interface RaceSnapshot {
   state: RaceState;
@@ -21,19 +23,22 @@ export interface RaceSnapshot {
  * track.
  */
 export class RaceManager {
-  private state: RaceState = 'countdown';
-  private elapsedMs = 0;
+  private state: RaceState = 'intro';
+  private timer = new Timer();
+  private introRemainingMs: number;
   private countdownRemainingMs: number;
   private finalTimeMs: number | null = null;
 
-  constructor(private readonly countdownSeconds: number) {
+  constructor(private readonly countdownSeconds: number, private readonly introSeconds: number = 3.5) {
+    this.introRemainingMs = introSeconds * 1000;
     this.countdownRemainingMs = countdownSeconds * 1000;
   }
 
   /** Full reset for the retry path: clock zeroed, lights back on. */
   reset(): void {
-    this.state = 'countdown';
-    this.elapsedMs = 0;
+    this.state = 'intro';
+    this.timer.reset();
+    this.introRemainingMs = this.introSeconds * 1000;
     this.countdownRemainingMs = this.countdownSeconds * 1000;
     this.finalTimeMs = null;
   }
@@ -65,11 +70,19 @@ export class RaceManager {
   }
 
   get elapsed(): number {
-    return this.elapsedMs;
+    return this.timer.elapsed;
   }
 
   /** Advances the clock. Returns true on the frame the countdown releases. */
   update(dtMs: number): void {
+    if (this.state === 'intro') {
+      this.introRemainingMs -= dtMs;
+      if (this.introRemainingMs <= 0) {
+        this.introRemainingMs = 0;
+        this.state = 'countdown';
+      }
+      return;
+    }
     if (this.state === 'countdown') {
       this.countdownRemainingMs -= dtMs;
       if (this.countdownRemainingMs <= 0) {
@@ -78,7 +91,7 @@ export class RaceManager {
       }
       return;
     }
-    if (this.state === 'racing') this.elapsedMs += dtMs;
+    if (this.state === 'racing') this.timer.update(dtMs);
   }
 
   /**
@@ -91,7 +104,7 @@ export class RaceManager {
   finish(): void {
     if (this.isOver) return;
     this.state = 'finished';
-    this.finalTimeMs = this.elapsedMs;
+    this.finalTimeMs = this.timer.elapsed;
   }
 
   /**
@@ -106,13 +119,14 @@ export class RaceManager {
   fail(): void {
     if (this.isOver) return;
     this.state = 'failed';
-    this.finalTimeMs = this.elapsedMs;
+    this.finalTimeMs = this.timer.elapsed;
   }
 
-  snapshot(): RaceSnapshot {
+  snapshot(): RaceSnapshot & { introRemainingMs: number } {
     return {
       state: this.state,
-      elapsedMs: this.elapsedMs,
+      elapsedMs: this.timer.elapsed,
+      introRemainingMs: this.introRemainingMs,
       countdownRemainingMs: this.countdownRemainingMs,
       finalTimeMs: this.finalTimeMs,
     };

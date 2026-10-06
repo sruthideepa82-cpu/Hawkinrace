@@ -14,6 +14,7 @@ export const SCENE_KEYS = {
 export const GAME_EVENTS = {
   hudUpdate: 'hud:update',
   raceFinished: 'race:finished',
+  lapComplete: 'race:lapComplete',
 } as const;
 
 /**

@@ -216,37 +216,217 @@ h1, h2, h3, p, dl, dd, ol { margin: 0; padding: 0; }
 .quit-btn:hover { opacity: 1; }
 .race-hints { display: flex; justify-content: center; flex-wrap: wrap; gap: 8px 26px; padding: 7px; font-family: var(--mono); font-size: 12px; color: var(--muted); border-top: 1px solid rgba(155, 92, 255, 0.3); background: #07060d; }
 
-.results { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: clamp(14px, 3vh, 30px); text-align: center; }
-.results-title { font-family: var(--display); font-style: italic; font-size: clamp(40px, 8vw, 96px); letter-spacing: 0.08em; text-shadow: 0 0 12px var(--red), 0 0 46px rgba(255, 46, 99, 0.7); }
-.results-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 16px; width: min(760px, 100%); }
-.results-grid div { padding: 16px; background: var(--panel); border: 1px solid rgba(255, 46, 99, 0.4); }
-.results-grid dt { font-family: var(--mono); font-size: 12px; letter-spacing: 0.25em; color: var(--muted); margin-bottom: 6px; }
-.results-grid dd { font-family: var(--display); font-size: clamp(26px, 3.4vw, 40px); letter-spacing: 0.06em; color: #fff; }
-.lap-list { list-style: none; width: min(420px, 100%); font-family: var(--mono); font-size: 14px; }
-.lap-list li { display: flex; justify-content: space-between; padding: 5px 2px; border-bottom: 1px solid rgba(255, 255, 255, 0.08); color: var(--muted); }
-.results-actions { display: flex; gap: 16px; flex-wrap: wrap; justify-content: center; }
+/* ---------- cinematic results ---------- */
+.cinematic-results {
+  position: absolute;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  padding: 40px;
+  background: linear-gradient(to right, rgba(0, 0, 0, 0.85) 0%, rgba(0, 0, 0, 0.4) 40%, transparent 100%);
+  color: #fff;
+  font-family: var(--body);
+  animation: cinematic-fade-in 1.5s ease-out both;
+  pointer-events: none; /* Let clicks pass through if needed, except on pane */
+}
+@keyframes cinematic-fade-in {
+  0% { opacity: 0; }
+  100% { opacity: 1; }
+}
+.cinematic-results.results-win {
+  background: linear-gradient(to right, rgba(20, 5, 10, 0.9) 0%, rgba(20, 5, 10, 0.5) 40%, transparent 100%);
+}
+.cinematic-results.results-fail {
+  background: linear-gradient(to right, rgba(20, 0, 0, 0.9) 0%, rgba(20, 0, 0, 0.5) 40%, transparent 100%);
+}
 
-/* ---------- final classification ---------- */
-.standings { list-style: none; display: grid; gap: 6px; width: min(680px, 100%); }
-.standing { display: grid; grid-template-columns: 56px 12px minmax(90px, 1fr) minmax(80px, auto) auto; align-items: center; gap: 12px; padding: 10px 14px; background: var(--panel); border: 1px solid rgba(255, 255, 255, 0.1); border-left: 3px solid rgba(255, 255, 255, 0.15); text-align: left; }
-.standing-pos { font-family: var(--display); font-size: clamp(20px, 2.6vw, 28px); letter-spacing: 0.06em; color: #fff; }
-.standing-chip { width: 12px; height: 12px; border-radius: 2px; box-shadow: 0 0 8px currentColor; }
-.standing-name { font-family: var(--display); font-size: clamp(18px, 2.4vw, 26px); letter-spacing: 0.08em; color: #fff; }
-.standing-car { font-family: var(--mono); font-size: 11px; letter-spacing: 0.18em; color: var(--muted); }
-.standing-time { font-family: var(--mono); font-size: 14px; color: var(--muted); }
-.standing.player { border-color: rgba(255, 46, 99, 0.55); border-left-color: var(--red); background: rgba(255, 46, 99, 0.1); box-shadow: 0 0 24px rgba(255, 46, 99, 0.18); }
-.standing.player .standing-name, .standing.player .standing-time { color: var(--red); }
+.results-pane {
+  position: relative;
+  width: min(500px, 100%);
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 30px;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  padding: 30px;
+  border-left: 2px solid rgba(255, 255, 255, 0.1);
+  pointer-events: auto;
+  animation: slide-in-left 1.2s cubic-bezier(0.16, 1, 0.3, 1) 0.3s both;
+}
+@keyframes slide-in-left {
+  0% { opacity: 0; transform: translateX(-40px); }
+  100% { opacity: 1; transform: translateX(0); }
+}
 
-/* ---------- outcome callouts ---------- */
-/* The headline under the title: "WIN · 1ST PLACE" on a win, "RESULT · 3RD PLACE" otherwise. */
-.results-headline { font-family: var(--display); font-size: clamp(22px, 3.6vw, 40px); letter-spacing: 0.16em; color: #fff; margin: -8px 0 0; }
-.results-won .results-title { color: #fff; text-shadow: 0 0 12px var(--red), 0 0 46px rgba(255, 46, 99, 0.7); }
+.results-win .results-pane {
+  border-left-color: var(--red);
+  box-shadow: inset 40px 0 100px -50px rgba(255, 46, 99, 0.2);
+}
 
-/* ---------- failure ---------- */
-.results-failed { background: radial-gradient(ellipse at center, rgba(255, 46, 99, 0.16), transparent 62%); }
-.results-failed .results-title { color: var(--red); }
-.results-failure-line { font-family: var(--display); font-size: clamp(22px, 4vw, 44px); letter-spacing: 0.14em; color: #fff; margin: 0; }
-.results-failure-sub { font-family: var(--mono); font-size: clamp(12px, 1.6vw, 16px); letter-spacing: 0.3em; color: var(--red); margin: 0; }
+.results-fail .results-pane {
+  border-left-color: #ff0000;
+  box-shadow: inset 40px 0 100px -50px rgba(255, 0, 0, 0.2);
+}
+
+/* Header */
+.results-header {
+  display: flex;
+  flex-direction: column;
+}
+.results-label {
+  font-family: var(--mono);
+  font-size: 14px;
+  letter-spacing: 0.3em;
+  color: var(--muted);
+  margin-bottom: -10px;
+}
+.results-pos {
+  font-family: var(--display);
+  font-size: 120px;
+  line-height: 1;
+  color: #ffffff;
+  text-shadow: 0 0 20px rgba(255, 255, 255, 0.3);
+  margin: 0 0 10px -4px;
+}
+.results-win .results-pos {
+  color: var(--red);
+  text-shadow: 0 0 30px rgba(255, 46, 99, 0.5);
+}
+.results-fail .results-pos {
+  color: #ff3333;
+}
+
+.results-hero-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.victory-label {
+  font-family: var(--display);
+  font-size: 24px;
+  letter-spacing: 0.1em;
+  color: var(--red);
+}
+.player-name {
+  font-family: var(--display);
+  font-size: 32px;
+  letter-spacing: 0.1em;
+}
+.total-time {
+  font-family: var(--mono);
+  font-size: 18px;
+  color: var(--muted);
+}
+
+/* Stats Row */
+.stats-row {
+  display: flex;
+  gap: 24px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  padding: 16px 0;
+}
+.stat {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.stat-label {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.15em;
+  color: var(--muted);
+}
+.stat-value {
+  font-family: var(--mono);
+  font-size: 14px;
+  color: #fff;
+}
+
+.failure-message {
+  font-family: var(--mono);
+  font-size: 14px;
+  letter-spacing: 0.1em;
+  color: #ff3333;
+  padding: 16px 0;
+  border-top: 1px solid rgba(255, 51, 51, 0.2);
+  border-bottom: 1px solid rgba(255, 51, 51, 0.2);
+}
+
+/* Details Layout */
+.results-details {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  flex: 1;
+  min-height: 0;
+}
+
+/* Telemetry Lists */
+.telemetry-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.telemetry-title {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.2em;
+  color: var(--muted);
+}
+.telemetry-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.telemetry-row {
+  display: flex;
+  align-items: center;
+  font-family: var(--mono);
+  font-size: 13px;
+  padding: 6px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+.telemetry-row.is-player {
+  color: var(--red);
+}
+.t-pos {
+  width: 30px;
+  color: var(--muted);
+}
+.is-player .t-pos {
+  color: var(--red);
+}
+.t-name {
+  flex: 1;
+  letter-spacing: 0.05em;
+}
+.t-time {
+  text-align: right;
+  color: var(--muted);
+}
+.is-player .t-time {
+  color: var(--red);
+}
+
+/* Actions */
+.results-actions-modern {
+  display: flex;
+  gap: 12px;
+  margin-top: auto;
+}
+.btn-primary {
+  font-size: 16px;
+  padding: 10px 24px;
+}
+.btn-secondary {
+  font-size: 14px;
+  padding: 10px 16px;
+}
 
 @media (max-width: 640px) {
   .standing { grid-template-columns: 46px 10px minmax(70px, 1fr) auto; gap: 8px; padding: 8px 10px; }

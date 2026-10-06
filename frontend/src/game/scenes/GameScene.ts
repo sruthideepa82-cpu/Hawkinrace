@@ -31,6 +31,7 @@ export class GameScene extends Phaser.Scene {
   private resultReported = false;
   private previousState: string = 'countdown';
   private rainEmitter?: Phaser.GameObjects.Particles.ParticleEmitter;
+  private lapTransitionMs: number = 0;
 
   constructor() {
     super(SCENE_KEYS.game);
@@ -41,6 +42,7 @@ export class GameScene extends Phaser.Scene {
     this.resultReported = false;
     this.accumulator = 0;
     this.previousState = 'countdown';
+    this.lapTransitionMs = 0;
     this.aiViews.clear();
 
     const layout = new TrackLayout(getTrackDefinition(this.bridge.config.trackId));
@@ -133,17 +135,48 @@ export class GameScene extends Phaser.Scene {
       this.scene.restart();
       return;
     }
+    
+    // Lap completion slow motion effect
+    if (this.lapTransitionMs > 0) {
+      this.lapTransitionMs -= deltaMs;
+      deltaMs *= 0.1;
+    }
+    
     if (this.inputController.cameraPressed()) this.cameraRig.cycle();
 
     this.accumulator += Math.min(deltaMs / 1000, MAX_FRAME_SECONDS);
     const input = this.inputController.read();
-    while (this.accumulator >= PHYSICS_STEP) {
-      this.session.step(PHYSICS_STEP, input);
-      this.accumulator -= PHYSICS_STEP;
+    
+    const isOver = this.session.race.isOver;
+    if (!isOver) {
+      while (this.accumulator >= PHYSICS_STEP) {
+        this.session.step(PHYSICS_STEP, input);
+        this.accumulator -= PHYSICS_STEP;
+      }
+    } else {
+      this.accumulator = 0;
     }
 
     // 1. Player view: full effects.
     const player = this.session.player;
+    
+    // Trigger lap completion overlay
+    if (player.lastLapEvent === 'lap') {
+      const lapData = player.laps.snapshot();
+      const lapTimeMs = lapData.lapTimesMs[lapData.lapTimesMs.length - 1] ?? 0;
+      const completedLap = lapData.lap - 1;
+      
+      this.game.events.emit(GAME_EVENTS.lapComplete, {
+        lap: completedLap,
+        lapTimeMs,
+        position: this.session.playerPosition(),
+        totalRacers: this.session.racers.length,
+        lapsRemaining: lapData.totalLaps - completedLap
+      });
+      
+      this.lapTransitionMs = 2000;
+    }
+
     const speed = player.physics.speed;
     const racing = this.session.race.isRacing;
     this.playerCar.sync(player.physics, {
@@ -166,20 +199,27 @@ export class GameScene extends Phaser.Scene {
       twist = this.session.layout.getAntiGravityTwist(player.physics.x, player.physics.y);
     }
 
-    this.cameraRig.update(player.physics, speed, deltaMs, twist);
+    const hud = this.session.hudData();
+    const over = hud.state === 'finished' || hud.state === 'failed';
+
+    if (hud.state === 'intro') {
+      this.cameraRig.updateIntro(player.physics, deltaMs, hud.introRemainingMs, 3500);
+    } else if (over) {
+      this.cameraRig.updateResults(player.physics, deltaMs);
+    } else {
+      this.cameraRig.update(player.physics, speed, deltaMs, twist);
+    }
 
     if (this.rainEmitter) {
       this.rainEmitter.setPosition(this.cameras.main.scrollX + this.cameras.main.width / 2, this.cameras.main.scrollY);
     }
 
-    const hud = this.session.hudData();
     if (this.previousState === 'countdown' && hud.state === 'racing') {
       this.cameras.main.flash(500, 255, 255, 255);
     }
 
     // Either way the race is over -- completed, or failed because every AI car
     // finished first -- so hand the result to React once, on the transition.
-    const over = hud.state === 'finished' || hud.state === 'failed';
     if (over && this.previousState !== 'finished' && this.previousState !== 'failed') {
       this.finishRace();
     }

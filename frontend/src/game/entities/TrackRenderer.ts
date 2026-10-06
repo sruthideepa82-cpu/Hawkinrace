@@ -208,15 +208,10 @@ export class TrackRenderer {
     };
 
     if (isUpsideDown) {
-      // Upside down track rendering
-      drawPoly(sidewalkLeftPoints, sidewalkRightPoints, 0x11050a); // Dark crimson corrupted edge
-      
-      // Glowing red cracks along the edges
-      g.lineStyle(3, 0xff1144, 0.8);
-      g.strokePoints(curbLeftPoints, true, true);
-      g.strokePoints(curbRightPoints, true, true);
-      
-      drawPoly(leftPoints, rightPoints, 0x050205); // Black cracked asphalt
+      // Upside down track: Dark wet asphalt, clean white edges, red reflections
+      drawPoly(sidewalkLeftPoints, sidewalkRightPoints, 0x0a0505); // Dark off-road mud/ash
+      drawPoly(curbLeftPoints, curbRightPoints, 0xffffff); // Clean white outer boundaries
+      drawPoly(leftPoints, rightPoints, 0x050508); // Dark wet asphalt
     } else {
       // Clean wide professional racing circuit
       drawPoly(sidewalkLeftPoints, sidewalkRightPoints, 0x110c1f); // Sidewalk
@@ -225,9 +220,17 @@ export class TrackRenderer {
     }
     
     // Road wear / reflections
-    if (!isUpsideDown) {
-      for (let i = 0; i < numPoints; i += 5) {
-        const p = centerline[i];
+    for (let i = 0; i < numPoints; i += 5) {
+      const p = centerline[i];
+      if (isUpsideDown) {
+        // Realistic wet reflections & subtle red reflections
+        if (rand() < 0.4) {
+          g.fillStyle(0x11111a, 0.4).fillEllipse(p.x + (rand()-0.5)*half, p.y + (rand()-0.5)*half, rand()*80+40, rand()*40+20);
+        }
+        if (rand() < 0.15) {
+          g.fillStyle(0xff1133, 0.15).fillEllipse(p.x, p.y, 100, 30); // Red environment reflections
+        }
+      } else {
         if (rand() < 0.2) {
           g.fillStyle(0x161622, 0.3).fillEllipse(p.x + (rand()-0.5)*half, p.y + (rand()-0.5)*half, rand()*80+40, rand()*40+20);
         }
@@ -238,7 +241,7 @@ export class TrackRenderer {
       }
     }
 
-    // Center lines
+    // Center lines (Yellow for both)
     g.lineStyle(6, 0xffcc00, 0.8); // Consistent yellow markings
     for (let i = 0; i < numPoints; i++) {
       if (Math.floor(i / 3) % 2 !== 0) continue;

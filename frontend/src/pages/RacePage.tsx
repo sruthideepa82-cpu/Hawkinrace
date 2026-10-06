@@ -1,6 +1,7 @@
 import { useEffect, useMemo } from 'react';
 import { GameCanvas } from '../components/GameCanvas';
 import { NeonButton } from '../components/NeonButton';
+import { ResultsPage } from './ResultsPage';
 import type { RaceBridge } from '../game/bridge';
 import { useKeyPress } from '../hooks/useKeyPress';
 import { useGameStore } from '../store/GameStore';
@@ -40,10 +41,15 @@ export function RacePage() {
   return (
     <section className="race-page">
       <GameCanvas bridge={bridge} />
-      <NeonButton variant="ghost" className="quit-btn" onClick={quit}>✕ QUIT</NeonButton>
-      <footer className="race-hints">
-        <span>W / ↑ accelerate</span><span>S / ↓ brake · reverse</span><span>A D / ← → steer</span><span>SHIFT nitro</span><span>C camera</span><span>R restart</span><span>ESC quit</span>
-      </footer>
+      {state.screen === 'race' && (
+        <>
+          <NeonButton variant="ghost" className="quit-btn" onClick={quit}>✕ QUIT</NeonButton>
+          <footer className="race-hints">
+            <span>W / ↑ accelerate</span><span>S / ↓ brake · reverse</span><span>A D / ← → steer</span><span>SHIFT nitro</span><span>C camera</span><span>R restart</span><span>ESC quit</span>
+          </footer>
+        </>
+      )}
+      {state.screen === 'results' && <ResultsPage />}
     </section>
   );
 }

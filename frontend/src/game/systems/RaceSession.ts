@@ -9,6 +9,7 @@ import { AiDriver, type AiRival } from './AiDriver';
 import { LapManager } from './LapManager';
 import { NitroTank } from './NitroTank';
 import { RaceManager, type RaceSnapshot } from './RaceManager';
+import { RacePositionManager } from './RacePositionManager';
 import { getCharacterStats } from '../config/characterTuning';
 
 /** One car on the grid: physics, lap state, nitro and (for AI) its driver. */
@@ -29,6 +30,8 @@ export class Racer {
   finishPosition: number | null = null;
   /** Set the frame the car took the flag, so physics can coast it to a stop. */
   justFinished = false;
+  /** The lap event that occurred this frame. */
+  lastLapEvent: import('./LapManager').LapEvent = 'none';
 
   constructor(
     readonly config: RacerConfig,
@@ -86,6 +89,7 @@ export class Racer {
 
 /** Base data for the HUD each frame. */
 export interface HudData extends RaceSnapshot {
+  introRemainingMs: number;
   speedKmh: number;
   nitro: number;
   playerPosition: number;
@@ -129,6 +133,7 @@ export class RaceSession {
   readonly race: RaceManager;
   readonly racers: Racer[];
   readonly player: Racer;
+  readonly positionManager: RacePositionManager;
 
   constructor(
     readonly layout: TrackLayout,
@@ -140,6 +145,7 @@ export class RaceSession {
 
     this.placeOnGrid();
     this.player = this.racers.find((r) => r.isPlayer) ?? this.racers[0];
+    this.positionManager = new RacePositionManager(this.racers);
   }
 
   /**
@@ -259,6 +265,7 @@ export class RaceSession {
         if (racer.finished) continue;
         const fraction = this.layout.fractionAt(racer.physics.x, racer.physics.y);
         const event = racer.laps.update(prevs[i], { x: racer.physics.x, y: racer.physics.y }, this.race.elapsed, fraction);
+        racer.lastLapEvent = event;
         if (event === 'finished') racer.justFinished = true;
       }
       this.assignFinishPositions();
@@ -393,29 +400,11 @@ export class RaceSession {
 
   /** Live ranking. Finished cars hold their finish slot; the rest sort on progress. */
   standings(): StandingEntry[] {
-    const rows = this.racers.map((racer, i) => ({
-      racer,
-      index: i,
-      progress: racer.laps.totalRaceProgress,
-      tiebreak: racer.laps.progressTiebreak,
-    }));
-
-    rows.sort((a, b) => {
-      const aDone = a.racer.finishPosition !== null;
-      const bDone = b.racer.finishPosition !== null;
-      if (aDone && bDone) return (a.racer.finishPosition ?? 0) - (b.racer.finishPosition ?? 0);
-      if (aDone) return -1;
-      if (bDone) return 1;
-      if (b.progress !== a.progress) return b.progress - a.progress;
-      return b.tiebreak - a.tiebreak;
-    });
-
-    return rows.map((row, i) => row.racer.standing(i + 1));
+    return this.positionManager.standings();
   }
 
   playerPosition(): number {
-    const board = this.standings();
-    return board.find((s) => s.isPlayer)?.position ?? 1;
+    return this.positionManager.playerPosition();
   }
 
   hudData(): HudData {
@@ -469,6 +458,7 @@ export class RaceSession {
     for (const racer of this.racers) {
       racer.finishPosition = null;
       racer.justFinished = false;
+      racer.lastLapEvent = 'none';
       racer.laps.reset();
       racer.nitro.reset();
       racer.ai?.reset();

@@ -3,6 +3,8 @@ import { getRaceBridge } from '../bridge';
 import { FONTS, GAME, GAME_EVENTS, SCENE_KEYS } from '../config/GameConfig';
 import type { HudPayload } from '../systems/RaceSession';
 import { formatRaceTime } from '../utils/geometry';
+import { LapTransitionOverlay } from './LapTransitionOverlay';
+import { TrackIntroOverlay } from './TrackIntroOverlay';
 
 import { getTrackDefinition } from '../config/tracks';
 import type { RaceBridge } from '../bridge';
@@ -38,6 +40,9 @@ export class HudScene extends Phaser.Scene {
   private nitroFill!: Phaser.GameObjects.Rectangle;
   private nitroLabel!: Phaser.GameObjects.Text;
   private static readonly NITRO_FULL_WIDTH = 150;
+  private trackIntroOverlay!: TrackIntroOverlay;
+  private hudElements: Phaser.GameObjects.GameObject[] = [];
+  private hudVisible = false;
 
   constructor() {
     super(SCENE_KEYS.hud);
@@ -46,10 +51,12 @@ export class HudScene extends Phaser.Scene {
   create(): void {
     this.bridge = getRaceBridge(this.game);
     const { width, height } = GAME;
+    this.hudElements = [];
+    this.hudVisible = false;
 
     // Top bar
-    this.add.rectangle(0, 0, width, 64, 0x000000, 0.7).setOrigin(0, 0);
-    this.add.rectangle(0, 64, width, 1, 0x333333, 1).setOrigin(0, 0);
+    const topBarBg = this.add.rectangle(0, 0, width, 64, 0x000000, 0.7).setOrigin(0, 0);
+    const topBarLine = this.add.rectangle(0, 64, width, 1, 0x333333, 1).setOrigin(0, 0);
 
     // Position and lap sit side by side on the left of the top bar.
     this.posText = this.add.text(40, 32, 'POS 1/4', { fontFamily: FONTS.display, fontSize: '28px', color: RED }).setOrigin(0, 0.5);
@@ -58,20 +65,24 @@ export class HudScene extends Phaser.Scene {
 
     // Driver / car label
     const { characterName, car } = getRaceBridge(this.game).config;
-    this.add.text(width / 2, 32, `${characterName.toUpperCase()}  ·  ${car.name.toUpperCase()}`, { fontFamily: FONTS.mono, fontSize: '18px', color: '#b8a6ff' }).setOrigin(0.5);
+    const labelText = this.add.text(width / 2, 32, `${characterName.toUpperCase()}  ·  ${car.name.toUpperCase()}`, { fontFamily: FONTS.mono, fontSize: '18px', color: '#b8a6ff' }).setOrigin(0.5);
+
+    this.hudElements.push(topBarBg, topBarLine, this.posText, this.lapText, this.timeText, labelText);
 
     // Live leaderboard, tucked under the top bar on the left.
     this.buildLeaderboard(40, 84);
 
     // Speed panel (bottom left)
-    this.add.circle(100, height - 60, 50, 0x000000, 0.7).setStrokeStyle(3, 0xff2e63);
+    const speedBg = this.add.circle(100, height - 60, 50, 0x000000, 0.7).setStrokeStyle(3, 0xff2e63);
     this.speedText = this.add.text(100, height - 60, '000', { fontFamily: FONTS.display, fontSize: '36px', color: '#ffffff' }).setOrigin(0.5);
-    this.add.text(180, height - 60, 'km/h', { fontFamily: FONTS.display, fontSize: '24px', color: '#ffffff' }).setOrigin(0, 0.5);
+    const speedUnitText = this.add.text(180, height - 60, 'km/h', { fontFamily: FONTS.display, fontSize: '24px', color: '#ffffff' }).setOrigin(0, 0.5);
 
     // Nitro panel (bottom right)
     this.nitroLabel = this.add.text(width - 250, height - 60, 'NITRO', { fontFamily: FONTS.display, fontSize: '20px', color: '#ffffff' }).setOrigin(1, 0.5);
-    this.add.rectangle(width - 40, height - 60, 200, 20, 0x000000, 0.7).setOrigin(1, 0.5).setStrokeStyle(2, 0xff2e63);
+    const nitroBg = this.add.rectangle(width - 40, height - 60, 200, 20, 0x000000, 0.7).setOrigin(1, 0.5).setStrokeStyle(2, 0xff2e63);
     this.nitroFill = this.add.rectangle(width - 235, height - 60, HudScene.NITRO_FULL_WIDTH, 16, 0xff2e63, 1).setOrigin(0, 0.5);
+
+    this.hudElements.push(speedBg, this.speedText, speedUnitText, this.nitroLabel, nitroBg, this.nitroFill);
 
     // Minimap. Everything lives in a container so the map can be rotated to
     // match the camera, which keeps the blip pointing the way the car drives.
@@ -88,6 +99,8 @@ export class HudScene extends Phaser.Scene {
     this.minimapBlip = this.add.circle(0, 0, 4, 0xff2e63);
     this.minimap.add(this.minimapBlip);
     this.viewLabel = this.add.text(width - 100, 150 + 92, 'CHASE', { fontFamily: FONTS.mono, fontSize: '12px', color: '#9a94b8' }).setOrigin(0.5);
+
+    this.hudElements.push(this.minimap, this.viewLabel);
 
     // Draw track on minimap
     const track = getTrackDefinition(this.bridge.config.trackId);
@@ -114,6 +127,12 @@ export class HudScene extends Phaser.Scene {
     this.bannerTime = this.add.text(0, 40, '', { fontFamily: FONTS.mono, fontSize: '32px', color: '#ffffff' }).setOrigin(0.5);
     this.banner = this.add.container(width / 2, height / 2, [this.bannerTitle, this.bannerTime]).setVisible(false);
 
+    new LapTransitionOverlay(this);
+    this.trackIntroOverlay = new TrackIntroOverlay(this, this.bridge);
+
+    // Hide HUD initially
+    this.hudElements.forEach(el => (el as any).setAlpha(0));
+
     this.game.events.on(GAME_EVENTS.hudUpdate, this.onUpdate, this);
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.game.events.off(GAME_EVENTS.hudUpdate, this.onUpdate, this));
   }
@@ -122,7 +141,8 @@ export class HudScene extends Phaser.Scene {
   private buildLeaderboard(x: number, y: number): void {
     const rowHeight = 26;
     const width = 230;
-    this.add.rectangle(x, y - 6, width, rowHeight * LEADER_ROWS + 10, 0x000000, 0.45).setOrigin(0, 0).setStrokeStyle(1, 0x333333);
+    const leaderboardBg = this.add.rectangle(x, y - 6, width, rowHeight * LEADER_ROWS + 10, 0x000000, 0.45).setOrigin(0, 0).setStrokeStyle(1, 0x333333);
+    this.hudElements.push(leaderboardBg);
 
     for (let i = 0; i < LEADER_ROWS; i++) {
       const rowY = y + i * rowHeight + 10;
@@ -130,10 +150,33 @@ export class HudScene extends Phaser.Scene {
       const pos = this.add.text(x + 24, rowY, `${i + 1}`, { fontFamily: FONTS.mono, fontSize: '14px', color: '#9a94b8' }).setOrigin(0, 0.5);
       const name = this.add.text(x + 48, rowY, '', { fontFamily: FONTS.display, fontSize: '17px', color: '#ffffff' }).setOrigin(0, 0.5);
       this.leaderRows.push({ name, pos, chip });
+      this.hudElements.push(chip, pos, name);
     }
   }
 
   private onUpdate(data: HudPayload): void {
+    this.trackIntroOverlay.update(data.introRemainingMs, data.state);
+
+    const over = data.state === 'finished' || data.state === 'failed';
+
+    if (data.state !== 'intro' && !over && !this.hudVisible) {
+      this.hudVisible = true;
+      this.tweens.add({
+        targets: this.hudElements,
+        alpha: 1,
+        duration: 800,
+        ease: 'Power2'
+      });
+    } else if (over && this.hudVisible) {
+      this.hudVisible = false;
+      this.tweens.add({
+        targets: this.hudElements,
+        alpha: 0,
+        duration: 800,
+        ease: 'Power2'
+      });
+    }
+
     this.posText.setText(`POS ${data.playerPosition}/${data.standings.length}`);
     this.lapText.setText(`LAP ${data.playerLap}/${data.totalLaps}`);
     this.timeText.setText(`TIME ${formatRaceTime(data.finalTimeMs ?? data.elapsedMs)}`);
@@ -179,28 +222,9 @@ export class HudScene extends Phaser.Scene {
       this.centerText.setText('');
     }
 
-    // The banner only ever appears once the race is over, and says the right
-    // thing for which way it ended.
-    const failed = data.state === 'failed';
-    const over = data.state === 'finished' || failed;
-    this.banner.setVisible(over);
-    if (over) {
-      if (failed) {
-        this.bannerTitle.setText('YOU FAILED').setColor('#ff2e63');
-        // Reaching this state means every car but the player's has finished, so
-        // the count is simply the field minus the player.
-        const aiCount = Math.max(0, data.standings.length - 1);
-        this.bannerTime.setText(`${aiCount}/${aiCount} RACERS BEAT YOU`);
-      } else {
-        this.bannerTitle.setText('RACE COMPLETE').setColor('#ffffff');
-        const me = data.standings.find((s) => s.isPlayer);
-        this.bannerTime.setText(
-          me?.finishTimeMs != null
-            ? `${ordinal(me.position)} PLACE   ${formatRaceTime(me.finishTimeMs)}`
-            : `FINAL TIME  ${formatRaceTime(data.finalTimeMs ?? data.elapsedMs)}`,
-        );
-      }
-    }
+    // We no longer show the giant banner in Phaser.
+    // The React overlay handles the "RACE COMPLETE" and "YOU FAILED" screens!
+    this.banner.setVisible(false);
   }
 
   private updateLeaderboard(standings: readonly StandingEntry[]): void {
@@ -231,9 +255,4 @@ export class HudScene extends Phaser.Scene {
       }
     }
   }
-}
-
-function ordinal(n: number): string {
-  const suffix = n === 1 ? 'ST' : n === 2 ? 'ND' : n === 3 ? 'RD' : 'TH';
-  return `${n}${suffix}`;
 }

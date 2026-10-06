@@ -107,6 +107,59 @@ export class CameraRig {
     }
   }
 
+  updateIntro(car: CarPhysics, _deltaMs: number, introRemainingMs: number, totalIntroMs: number): void {
+    const elapsed = totalIntroMs - introRemainingMs;
+    const progress = Math.min(elapsed / totalIntroMs, 1);
+
+    // E.g., start 500px ahead and zoom out, swoop in to normal follow.
+    this.rotation = wrapAngle(this.idealRotation(car, 0));
+    this.camera.setRotation(this.rotation);
+
+    const target = this.followTarget(car);
+    const startX = car.x + Math.cos(car.heading) * 500;
+    const startY = car.y + Math.sin(car.heading) * 500;
+    
+    // Cubic ease out
+    const ease = 1 - Math.pow(1 - progress, 3);
+    
+    const cx = startX + (target.x - startX) * ease;
+    const cy = startY + (target.y - startY) * ease;
+    this.camera.centerOn(cx, cy);
+
+    const startZoom = 0.4;
+    const currentZoom = startZoom + (this.viewZoom - startZoom) * ease;
+    this.camera.setZoom(currentZoom);
+  }
+
+  updateResults(car: CarPhysics, deltaMs: number): void {
+    const dt = deltaMs / 1000;
+    
+    // Slowly orbit the camera (very slow pan)
+    const orbitSpeed = 0.05;
+    this.rotation = wrapAngle(this.rotation + orbitSpeed * dt);
+    this.camera.setRotation(this.rotation);
+
+    // Shift target so the car appears on the right side of the screen
+    // The camera 'up' is -this.rotation. To move car to the right (screen +x),
+    // we move the camera target to the left (screen -x).
+    const shiftX = -250 * Math.cos(this.rotation);
+    const shiftY = -250 * Math.sin(this.rotation);
+
+    const targetX = car.x + shiftX;
+    const targetY = car.y + shiftY;
+
+    // Smoothly ease to the new position
+    const follow = 1 - Math.exp(-1.5 * dt);
+    const cx = this.camera.scrollX + this.camera.width / 2;
+    const cy = this.camera.scrollY + this.camera.height / 2;
+    this.camera.centerOn(cx + (targetX - cx) * follow, cy + (targetY - cy) * follow);
+
+    // Zoom in slightly
+    if (this.zoomTarget !== 1.1) {
+      this.easeZoom(1.1);
+    }
+  }
+
   /**
    * Where the camera should end up to put the car on its screen anchor. The car
    * rests `anchorOffset` px below the screen centre, so the point sits behind
