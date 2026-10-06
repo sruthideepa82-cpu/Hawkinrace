@@ -5,12 +5,19 @@ import { GAME_MODES, type GameModeId, type GameModeInfo } from '../data/gameMode
 import { TRACKS, type TrackId, type TrackInfo } from '../data/tracks';
 import type { RaceResult } from '../game/bridge';
 
-export type Screen =
-  | 'intro' | 'menu' | 'garage' | 'leaderboard' | 'settings'
-  | 'character' | 'car' | 'track' | 'mode' | 'race' | 'results';
-
+/**
+ * Progression state only.
+ *
+ * Which page is on screen is NOT stored here -- that is the URL, read by the
+ * router. Holding a second copy of it here was what let the two disagree.
+ *
+ *  raceKey   bumped on every race start. The Phaser game is rebuilt from the
+ *            bridge that RacePage memoises on it, which is what makes RETRY
+ *            start a genuinely new race.
+ *  lastResult kept until the next race starts, because the results screen
+ *            reads from it rather than being handed values.
+ */
 export interface GameState {
-  screen: Screen;
   selectedCharacterId: CharacterId | null;
   selectedCarId: CarId | null;
   selectedTrackId: TrackId | null;
@@ -21,7 +28,6 @@ export interface GameState {
 }
 
 export type GameAction =
-  | { type: 'NAVIGATE'; screen: Screen }
   | { type: 'SELECT_CHARACTER'; id: CharacterId }
   | { type: 'SELECT_CAR'; id: CarId }
   | { type: 'SELECT_TRACK'; id: TrackId }
@@ -30,7 +36,6 @@ export type GameAction =
   | { type: 'RACE_FINISHED'; result: RaceResult };
 
 export const initialState: GameState = {
-  screen: 'intro',
   selectedCharacterId: null,
   selectedCarId: null,
   selectedTrackId: null,
@@ -39,21 +44,8 @@ export const initialState: GameState = {
   lastResult: null,
 };
 
-/** Where "< BACK" goes from each screen. */
-export const BACK_TARGET: Partial<Record<Screen, Screen>> = {
-  garage: 'menu',
-  leaderboard: 'menu',
-  settings: 'menu',
-  character: 'menu',
-  car: 'character',
-  track: 'car',
-  mode: 'track',
-};
-
 export function gameReducer(state: GameState, action: GameAction): GameState {
   switch (action.type) {
-    case 'NAVIGATE':
-      return { ...state, screen: action.screen };
     case 'SELECT_CHARACTER':
       return { ...state, selectedCharacterId: action.id };
     case 'SELECT_CAR':
@@ -62,10 +54,11 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
       return TRACKS.find((t) => t.id === action.id)?.playable ? { ...state, selectedTrackId: action.id } : state;
     case 'SELECT_GAME_MODE':
       return GAME_MODES.find((m) => m.id === action.id)?.playable ? { ...state, selectedGameModeId: action.id } : state;
+    // Rebuilds the Phaser game via the new raceKey and clears the old result.
     case 'START_RACE':
-      return { ...state, screen: 'race', raceKey: state.raceKey + 1, lastResult: null };
+      return { ...state, raceKey: state.raceKey + 1, lastResult: null };
     case 'RACE_FINISHED':
-      return { ...state, screen: 'results', lastResult: action.result };
+      return { ...state, lastResult: action.result };
   }
 }
 
@@ -76,6 +69,7 @@ export interface Selections {
   mode: GameModeInfo | null;
 }
 
+/** The four things that have to be chosen before a race can start. */
 export function getSelections(state: GameState): Selections {
   return {
     character: CHARACTERS.find((c) => c.id === state.selectedCharacterId) ?? null,
@@ -83,6 +77,12 @@ export function getSelections(state: GameState): Selections {
     track: TRACKS.find((t) => t.id === state.selectedTrackId) ?? null,
     mode: GAME_MODES.find((m) => m.id === state.selectedGameModeId) ?? null,
   };
+}
+
+/** True when every selection needed to race has been made. */
+export function isRaceReady(state: GameState): boolean {
+  const { character, car, track, mode } = getSelections(state);
+  return Boolean(character && car && track && mode);
 }
 
 interface StoreValue {

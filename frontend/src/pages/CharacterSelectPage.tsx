@@ -3,16 +3,18 @@ import { ScreenFrame } from '../components/ScreenFrame';
 import { SelectCard } from '../components/SelectCard';
 import { StatBar } from '../components/StatBar';
 import { CHARACTERS } from '../data/characters';
+import { useRouter } from '../router/RouterProvider';
 import { useGameStore } from '../store/GameStore';
 
 export function CharacterSelectPage() {
   const { state, dispatch } = useGameStore();
+  const { navigate } = useRouter();
   return (
     <ScreenFrame
       step={1}
       title="CHOOSE YOUR DRIVER"
-      onBack={() => dispatch({ type: 'NAVIGATE', screen: 'menu' })}
-      onContinue={() => dispatch({ type: 'NAVIGATE', screen: 'car' })}
+      onBack={() => navigate('menu')}
+      onContinue={() => navigate('car')}
       continueDisabled={!state.selectedCharacterId}
     >
       <div className="card-grid">

@@ -137,6 +137,9 @@ h1, h2, h3, p, dl, dd, ol { margin: 0; padding: 0; }
   display: flex; align-items: center; gap: 18px; padding: 16px 26px; cursor: pointer;
   background: var(--panel); border: 1px solid rgba(255, 46, 99, 0.35); border-left: 4px solid var(--red);
   font-family: var(--display); font-size: 26px; letter-spacing: 0.14em;
+  /* These are real links so the browser's own link affordances work; the
+     underline and default link colour are not wanted here. */
+  text-decoration: none; color: #fff;
   transition: transform 0.18s, box-shadow 0.18s, border-color 0.18s, background 0.18s;
 }
 .menu-item:hover, .menu-item:focus-visible { transform: translateX(10px); border-color: var(--red); background: rgba(255, 46, 99, 0.14); box-shadow: 0 0 24px rgba(255, 46, 99, 0.35); outline: none; }

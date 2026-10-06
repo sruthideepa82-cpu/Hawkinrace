@@ -4,14 +4,35 @@ import { NeonButton } from '../components/NeonButton';
 import { ResultsPage } from './ResultsPage';
 import type { RaceBridge } from '../game/bridge';
 import { useKeyPress } from '../hooks/useKeyPress';
-import { useGameStore } from '../store/GameStore';
+import { useRouter } from '../router/RouterProvider';
+import { isRaceReady, useGameStore } from '../store/GameStore';
 
-export function RacePage() {
+/**
+ * The race page, and the results overlay drawn on top of it.
+ *
+ * Both the `/race` and `/results` routes render this one component (see
+ * `CurrentScreen` in App). Because it is the same component instance across
+ * those two routes, the Phaser game underneath survives the transition: the
+ * finished race stays on screen behind the results pane instead of being torn
+ * down and replaced with a new one. That is what stops the race from visibly
+ * restarting itself the moment the player takes the chequered flag.
+ *
+ * `showResults` only controls the overlay, never the mount.
+ */
+export function RacePage({ showResults = false }: { showResults?: boolean }) {
   const { state, dispatch, selections } = useGameStore();
+  const { screen, navigate } = useRouter();
   const { character, car, track, mode } = selections;
-  const ready = Boolean(character && car && track && mode);
+  const ready = isRaceReady(state);
 
-  // Build the React -> Phaser contract once per race start.
+  // Rebuilt whenever a new race starts, or whenever a selection changes.
+  //
+  // `raceKey` is what makes RETRY a fresh race. The selections are included
+  // because the URL can now reach this page again from the back button after
+  // the driver or car was changed, and the game must race what is actually
+  // selected now rather than what was selected when the page was first built.
+  // They come from static data tables, so the references are stable and this
+  // does not re-fire on every render.
   const bridge = useMemo<RaceBridge | null>(() => {
     if (!character || !car || !track || !mode) return null;
     return {
@@ -27,21 +48,32 @@ export function RacePage() {
         trackId: track.id,
         modeId: mode.id,
       },
-      onRaceComplete: (result) => dispatch({ type: 'RACE_FINISHED', result }),
+      onRaceComplete: (result) => {
+        dispatch({ type: 'RACE_FINISHED', result });
+        // Replace rather than push: the race that just ended is the current
+        // page, so backing out of the results should not re-enter it.
+        navigate('results', { replace: true });
+      },
     };
-  }, [state.raceKey]);
+  }, [state.raceKey, character, car, track, mode, dispatch, navigate]);
 
-  const quit = () => dispatch({ type: 'NAVIGATE', screen: 'menu' });
+  const quit = () => navigate('menu');
   useKeyPress('Escape', quit);
+
+  // Nothing to race without all four selections, so a direct link to this
+  // route (or a stale one) goes back to the menu rather than showing a black
+  // canvas.
   useEffect(() => {
-    if (!ready) dispatch({ type: 'NAVIGATE', screen: 'menu' });
-  }, [ready, dispatch]);
+    if (!ready) navigate('menu', { replace: true });
+  }, [ready, navigate]);
 
   if (!bridge) return null;
+  const resultsVisible = showResults && screen === 'results';
+
   return (
     <section className="race-page">
       <GameCanvas bridge={bridge} />
-      {state.screen === 'race' && (
+      {!resultsVisible && (
         <>
           <NeonButton variant="ghost" className="quit-btn" onClick={quit}>✕ QUIT</NeonButton>
           <footer className="race-hints">
@@ -49,7 +81,7 @@ export function RacePage() {
           </footer>
         </>
       )}
-      {state.screen === 'results' && <ResultsPage />}
+      {resultsVisible && <ResultsPage />}
     </section>
   );
 }

@@ -1,16 +1,23 @@
 import { ScreenFrame } from '../components/ScreenFrame';
 import { SelectCard } from '../components/SelectCard';
 import { GAME_MODES } from '../data/gameModes';
+import { useRouter } from '../router/RouterProvider';
 import { useGameStore } from '../store/GameStore';
 
 export function ModeSelectPage() {
   const { state, dispatch } = useGameStore();
+  const { navigate } = useRouter();
+  // START_RACE bumps the raceKey, which is what rebuilds the Phaser game.
+  const startRace = () => {
+    dispatch({ type: 'START_RACE' });
+    navigate('race');
+  };
   return (
     <ScreenFrame
       step={4}
       title="CHOOSE YOUR MODE"
-      onBack={() => dispatch({ type: 'NAVIGATE', screen: 'track' })}
-      onContinue={() => dispatch({ type: 'START_RACE' })}
+      onBack={() => navigate('track')}
+      onContinue={startRace}
       continueLabel="START RACE >"
       continueDisabled={!state.selectedGameModeId}
     >

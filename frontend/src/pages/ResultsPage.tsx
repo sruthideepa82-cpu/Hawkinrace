@@ -2,6 +2,7 @@ import type { StandingEntry } from '../game/bridge';
 import { NeonButton } from '../components/NeonButton';
 import { PLACEHOLDER_COINS } from '../data/placeholders';
 import { formatRaceTime } from '../game/utils/geometry';
+import { useRouter } from '../router/RouterProvider';
 import { useGameStore } from '../store/GameStore';
 
 function ordinal(n: number): string {
@@ -11,11 +12,18 @@ function ordinal(n: number): string {
 
 export function ResultsPage() {
   const { state, dispatch } = useGameStore();
+  const { navigate } = useRouter();
   const result = state.lastResult;
 
-  const retry = () => dispatch({ type: 'START_RACE' });
-  const trackSelect = () => dispatch({ type: 'NAVIGATE', screen: 'track' });
-  const mainMenu = () => dispatch({ type: 'NAVIGATE', screen: 'menu' });
+  // START_RACE bumps the raceKey, which rebuilds the Phaser game, and clearing
+  // the result hides this overlay. Navigating to /race keeps the page mounted,
+  // so the swap is a new game rather than a remount.
+  const retry = () => {
+    dispatch({ type: 'START_RACE' });
+    navigate('race');
+  };
+  const trackSelect = () => navigate('track');
+  const mainMenu = () => navigate('menu');
 
   if (!result) return null;
 

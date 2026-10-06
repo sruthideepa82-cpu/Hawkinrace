@@ -1,10 +1,12 @@
 import { ScreenFrame } from '../components/ScreenFrame';
 import { StatBar } from '../components/StatBar';
 import { CARS, colorToCss } from '../data/cars';
+import { useRouter } from '../router/RouterProvider';
 import { useGameStore } from '../store/GameStore';
 
 export function GaragePage() {
-  const { state, dispatch } = useGameStore();
+  const { state } = useGameStore();
+  const { navigate } = useRouter();
   const currentCar = CARS.find(c => c.id === (state.selectedCarId || 'falcon-gt')) || CARS[0];
   const css = colorToCss(currentCar.color);
 
@@ -12,7 +14,7 @@ export function GaragePage() {
     <ScreenFrame
       step={0}
       title="GARAGE"
-      onBack={() => dispatch({ type: 'NAVIGATE', screen: 'menu' })}
+      onBack={() => navigate('menu')}
     >
       <div style={{ display: 'flex', gap: '40px', flexWrap: 'wrap' }}>
         <div style={{ flex: '1 1 300px' }}>

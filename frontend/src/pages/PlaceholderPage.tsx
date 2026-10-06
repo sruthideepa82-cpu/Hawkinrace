@@ -1,5 +1,6 @@
 import { ScreenFrame } from '../components/ScreenFrame';
-import { BACK_TARGET, useGameStore, type Screen } from '../store/GameStore';
+import { useRouter } from '../router/RouterProvider';
+import { BACK_TARGET, type Screen } from '../router/routes';
 
 const COPY: Partial<Record<Screen, { title: string; icon: string; text: string }>> = {
   garage: { title: 'GARAGE', icon: '🚗', text: 'Upgrades and unlockable cars arrive in a later milestone.' },
@@ -8,10 +9,10 @@ const COPY: Partial<Record<Screen, { title: string; icon: string; text: string }
 };
 
 export function PlaceholderPage({ screen }: { screen: Screen }) {
-  const { dispatch } = useGameStore();
+  const { navigate } = useRouter();
   const copy = COPY[screen] ?? { title: 'COMING SOON', icon: '…', text: '' };
   return (
-    <ScreenFrame title={copy.title} onBack={() => dispatch({ type: 'NAVIGATE', screen: BACK_TARGET[screen] ?? 'menu' })}>
+    <ScreenFrame title={copy.title} onBack={() => navigate(BACK_TARGET[screen] ?? 'menu')}>
       <div className="placeholder">
         <div className="placeholder-icon" aria-hidden="true">{copy.icon}</div>
         <p>COMING SOON</p>

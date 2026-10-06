@@ -1,10 +1,10 @@
 import { Logo } from '../components/Logo';
 import { useKeyPress } from '../hooks/useKeyPress';
-import { useGameStore } from '../store/GameStore';
+import { useRouter } from '../router/RouterProvider';
 
 export function IntroPage() {
-  const { dispatch } = useGameStore();
-  const start = () => dispatch({ type: 'NAVIGATE', screen: 'menu' });
+  const { navigate } = useRouter();
+  const start = () => navigate('menu');
   useKeyPress('Enter', start);
 
   return (

@@ -3,16 +3,18 @@ import { SelectCard } from '../components/SelectCard';
 import { TrackPreview } from '../components/TrackPreview';
 import { TRACKS } from '../data/tracks';
 import { formatRaceTime } from '../game/utils/geometry';
+import { useRouter } from '../router/RouterProvider';
 import { useGameStore } from '../store/GameStore';
 
 export function TrackSelectPage() {
   const { state, dispatch } = useGameStore();
+  const { navigate } = useRouter();
   return (
     <ScreenFrame
       step={3}
       title="CHOOSE YOUR TRACK"
-      onBack={() => dispatch({ type: 'NAVIGATE', screen: 'car' })}
-      onContinue={() => dispatch({ type: 'NAVIGATE', screen: 'mode' })}
+      onBack={() => navigate('car')}
+      onContinue={() => navigate('mode')}
       continueDisabled={!state.selectedTrackId}
     >
       <div className="card-grid tracks">

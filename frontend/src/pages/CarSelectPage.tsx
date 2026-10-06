@@ -3,16 +3,18 @@ import { ScreenFrame } from '../components/ScreenFrame';
 import { SelectCard } from '../components/SelectCard';
 import { StatBar } from '../components/StatBar';
 import { CARS, colorToCss } from '../data/cars';
+import { useRouter } from '../router/RouterProvider';
 import { useGameStore } from '../store/GameStore';
 
 export function CarSelectPage() {
   const { state, dispatch } = useGameStore();
+  const { navigate } = useRouter();
   return (
     <ScreenFrame
       step={2}
       title="CHOOSE YOUR CAR"
-      onBack={() => dispatch({ type: 'NAVIGATE', screen: 'character' })}
-      onContinue={() => dispatch({ type: 'NAVIGATE', screen: 'track' })}
+      onBack={() => navigate('character')}
+      onContinue={() => navigate('track')}
       continueDisabled={!state.selectedCarId}
     >
       <div className="card-grid cars">
