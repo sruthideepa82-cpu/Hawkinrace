@@ -28,19 +28,17 @@ export interface CameraTarget {
 }
 
 /**
- * Third-person chase camera.
+ * Heading-up chase camera.
  *
- * Two ideas keep it readable at speed:
+ * The world turns so the car always points up the screen, but it does so
+ * *gently*: inside a dead zone the view is left completely alone, and past it
+ * the pull eases in from zero and is capped, so the world settles round after
+ * the car instead of snapping with every input. The car is pinned to a fixed
+ * spot on screen by solving the camera centre in screen space, so it cannot be
+ * thrown off screen when it spins, accelerates or brakes.
  *
- * 1. The car is pinned to a fixed point *on screen*, not to a world point a
- *    set distance ahead of it. A world-space target runs away from the car as
- *    it accelerates and sweeps wide around it when it turns, which is how the
- *    car ends up off screen; an on-screen anchor cannot be thrown off, whatever
- *    the car does.
- * 2. The world only tilts once the car has genuinely turned. Inside a dead zone
- *    the rotation is frozen, and outside it the camera eases after the car at a
- *    bounded speed, so the background settles into a corner instead of spinning
- *    with every steering input.
+ * The Upside Down track's scripted anti-gravity roll rides on top of this and
+ * is rate limited the same way.
  *
  * Cycle between CHASE / HOOD / MAP with the camera key (CONTROLS.camera).
  */
@@ -91,6 +89,7 @@ export class CameraRig {
     // Rotation first: the on-screen anchor is solved in the camera's own frame,
     // so it needs this frame's rotation rather than the previous frame's.
     this.stepRotation(car, antiGravityTwist, dt);
+    this.camera.setRotation(this.rotation);
 
     // scrollX/scrollY is the world point at the viewport's top-left, so the
     // target has to be shifted by half the viewport to centre it on the anchor.
@@ -145,18 +144,13 @@ export class CameraRig {
 
   private stepRotation(car: CarPhysics, twist: number, dt: number): void {
     const view = CAMERA.views[this.viewIndex];
-    if (!view.rotate) {
-      this.rotation = wrapAngle(twist);
-      return;
-    }
 
     // Take the short way round so a full spin does not unwind the camera.
     const deviation = angleDelta(this.rotation, this.idealRotation(car, twist));
 
-    // Inside the dead zone the world is left completely alone: ordinary
-    // steering corrections must not move the background at all. Past it the
-    // pull eases in from zero and is capped, so the world can never rotate
-    // faster than maxRotateSpeed however hard the car is turned.
+    // Inside the dead zone the view is left completely alone, so small steering
+    // corrections never wobble the background. Past it the pull eases in from
+    // zero and is capped, so the world turns after the car rather than with it.
     const excess = Math.abs(deviation) - view.angleDeadZoneDeg * DEG;
     if (excess <= 0) return;
 

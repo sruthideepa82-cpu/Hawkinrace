@@ -2,14 +2,13 @@
  * Headless camera verification harness.
  *
  * Flies the real CameraRig against the real CarPhysics with a stub camera that
- * reproduces Phaser's rotated-camera projection, so the two complaints that
- * prompted the rig's rewrite can be asserted instead of eyeballed:
+ * reproduces Phaser's camera projection, so the camera's behaviour can be
+ * asserted instead of eyeballed. The properties under test are the ones that
+ * were reported as problems:
  *
- *   - the camera used to sit a speed-scaled distance *ahead* of the car, so it
- *     pulled away as you accelerated and swung wide when you turned, which is
- *     how the car ended up hidden at the edge of the screen;
- *   - the world used to be locked 1:1 to the car's heading, so every steering
- *     input spun the whole background.
+ *   - the car must always point up the screen (a sideways car was confusing);
+ *   - the world must ease round after the car rather than snapping with it, and
+ *     the car must never be hidden at the edge of the frame.
  *
  * The rig is deliberately Phaser-free at runtime, which is what makes this
  * possible. Run with:
@@ -26,7 +25,7 @@ const STEP = 1 / 120;
 const WIDTH = 1280;
 const HEIGHT = 720;
 const DEG = Math.PI / 180;
-/** Duplicated from the rig; the probe needs it to measure the rotation lag. */
+/** Duplicated from the rig; the probe needs it to measure "car points up". */
 const FORWARD_TO_SCREEN_UP = -Math.PI / 2;
 
 let failures = 0;
@@ -43,8 +42,8 @@ function check(label: string, condition: boolean, detail = ''): void {
 }
 
 /**
- * A camera that projects world points the way Phaser's rotated camera does, so
- * "is the car on screen" can be answered in pixels.
+ * A camera that projects world points the way Phaser's camera does, so "is the
+ * car on screen" can be answered in pixels.
  */
 class StubCamera implements CameraTarget {
   readonly width = WIDTH;
@@ -102,11 +101,10 @@ interface Frame {
   speed: number;
   /** How fast the camera rotation moved this frame (rad/s). */
   rotRate: number;
-  /** Degrees the world trails the car's heading by. */
-  deviationDeg: number;
+  /** Degrees the car is off "pointing straight up the screen". */
+  leanDeg: number;
 }
 
-const noInput: InputState = { accelerate: false, brake: false, steer: 0, nitro: false };
 const throttle: InputState = { accelerate: true, brake: false, steer: 0, nitro: false };
 const steer = (s: number): InputState => ({ accelerate: true, brake: false, steer: s, nitro: false });
 
@@ -133,14 +131,13 @@ function fly(opts: {
     car.step(STEP, opts.input(t, car), 1, 0);
     rig.update(car, car.speed, STEP * 1000, opts.twist?.(t) ?? 0);
 
-    const ideal = FORWARD_TO_SCREEN_UP - car.heading;
     const at = cam.screen(car.x, car.y);
     frames.push({
       screenX: at.x,
       screenY: at.y,
       speed: car.speed,
       rotRate: Math.abs(angleDelta(prevRotation, rig.screenRotation)) / STEP,
-      deviationDeg: Math.abs(angleDelta(rig.screenRotation, ideal)) / DEG,
+      leanDeg: Math.abs(angleDelta(rig.screenRotation, FORWARD_TO_SCREEN_UP - car.heading)) / DEG,
     });
     prevRotation = rig.screenRotation;
   }
@@ -159,6 +156,24 @@ function boxViolations(frames: readonly Frame[]): string[] {
 const worst = (frames: readonly Frame[], pick: (f: Frame) => number): number =>
   frames.reduce((m, f) => Math.max(m, pick(f)), 0);
 
+// -------------------------------------------------------------- points up
+console.log('\n[vertical] the car always points up the screen');
+{
+  // At spawn the car heads along +x, which the old locked camera left pointing
+  // right across the screen. It has to be straight up instead.
+  const spawnRig = new CameraRig(new StubCamera());
+  const spawnCar = new CarPhysics(getCarTuning('falcon-gt'));
+  spawnCar.reset(0, 0, 0);
+  spawnRig.snap(spawnCar);
+  check('car points up at spawn', Math.abs(angleDelta(spawnRig.screenRotation, FORWARD_TO_SCREEN_UP)) < 1e-9,
+    `${(spawnRig.screenRotation / DEG).toFixed(1)}deg`);
+
+  const { frames } = fly({ seconds: 6, input: () => throttle });
+  check('car points up while driving straight',
+    worst(frames, (f) => f.leanDeg) < 1,
+    `worst lean ${worst(frames, (f) => f.leanDeg).toFixed(2)}deg`);
+}
+
 // ---------------------------------------------------------------- the anchor
 console.log('\n[anchor] the car holds its spot on screen as it accelerates');
 {
@@ -169,8 +184,7 @@ console.log('\n[anchor] the car holds its spot on screen as it accelerates');
   const xs = frames.map((f) => f.screenX);
 
   check('car reaches top speed', last.speed > CAMERA.speedThreshold, `${last.speed.toFixed(0)}px/s`);
-  check('car settles on its screen anchor',
-    Math.abs(last.screenY - expectedY) < 8,
+  check('car settles slightly below centre', Math.abs(last.screenY - expectedY) < 8,
     `y ${last.screenY.toFixed(1)} vs ${expectedY.toFixed(1)}`);
   // The old rig placed the camera further ahead the faster you drove, which slid
   // the car down the screen (and eventually off it). The spot must not drift.
@@ -183,7 +197,7 @@ console.log('\n[anchor] the car holds its spot on screen as it accelerates');
 }
 
 // ------------------------------------------------------------- hard cornering
-console.log('\n[cornering] the car stays in frame and the world stays readable');
+console.log('\n[cornering] the world eases round after the car, never snapping');
 {
   const tunings: [string, CarTuning][] = [
     ['falcon-gt', getCarTuning('falcon-gt')],
@@ -204,14 +218,19 @@ console.log('\n[cornering] the car stays in frame and the world stays readable')
     const outside = boxViolations(frames);
     check(`${name}: car never leaves the safe area`, outside.length === 0,
       `${outside.length} frames, first ${outside[0] ?? '-'}`);
-    check(`${name}: world never rotates faster than the cap`,
+    check(`${name}: world never turns faster than the cap`,
       worst(frames, (f) => f.rotRate) <= CAMERA.maxRotateSpeed + 0.05,
       `peak ${worst(frames, (f) => f.rotRate).toFixed(2)} vs ${CAMERA.maxRotateSpeed}`);
+    // It is allowed to lean into a corner, but the car must not end up pointing
+    // sideways or backwards while it is driving.
+    check(`${name}: car stays roughly up the screen through the corner`,
+      worst(frames, (f) => f.leanDeg) < 60,
+      `peak lean ${worst(frames, (f) => f.leanDeg).toFixed(0)}deg`);
   }
 }
 
 // ------------------------------------------------------------------- the spin
-console.log('\n[spin] a full-lock donut does not whip the view');
+console.log('\n[spin] a full-lock donut keeps the car up and in frame');
 {
   const { frames } = fly({
     tuning: getCarTuning('night-runner'),
@@ -224,15 +243,13 @@ console.log('\n[spin] a full-lock donut does not whip the view');
   check('spin still respects the rotation cap',
     worst(frames, (f) => f.rotRate) <= CAMERA.maxRotateSpeed + 0.05,
     `peak ${worst(frames, (f) => f.rotRate).toFixed(2)}`);
-  // The camera may lag the car, but it must keep it in view rather than letting
-  // it drift off behind the rotation.
-  check('world never trails the car by a wild angle',
-    worst(frames, (f) => f.deviationDeg) < 180,
-    `peak ${worst(frames, (f) => f.deviationDeg).toFixed(0)}deg`);
+  check('donut does not leave the car pointing backwards',
+    worst(frames, (f) => f.leanDeg) < 90,
+    `peak lean ${worst(frames, (f) => f.leanDeg).toFixed(0)}deg`);
 }
 
-// --------------------------------------------------------------- the dead zone
-console.log('\n[dead zone] small corrections leave the background perfectly still');
+// --------------------------------------------------------------- easing in
+console.log('\n[easing] small corrections do nothing; big ones ease in');
 {
   const cam = new StubCamera();
   const rig = new CameraRig(cam);
@@ -242,24 +259,33 @@ console.log('\n[dead zone] small corrections leave the background perfectly stil
 
   const dead = CAMERA.views[0].angleDeadZoneDeg;
   let movedInsideZone = 0;
-  for (const deg of [1, 3, 6, dead - 0.5]) {
+  for (const deg of [1, 3, dead - 0.5]) {
     car.heading = deg * DEG;
     const before = rig.screenRotation;
     rig.update(car, 0, STEP * 1000, 0);
     if (Math.abs(angleDelta(before, rig.screenRotation)) > 1e-9) movedInsideZone++;
   }
   check('heading change inside the dead zone does not move the world', movedInsideZone === 0,
-    `${movedInsideZone} of 4 leaked`);
+    `${movedInsideZone} of 3 leaked`);
 
-  // Just past the zone the world must ease, not jump: one frame of rotation has
-  // to be a small fraction of the excess, not all of it.
+  // Just past the zone the world must ease, not jump.
   car.heading = (dead + 8) * DEG;
   const before = rig.screenRotation;
   rig.update(car, 0, STEP * 1000, 0);
   const stepDeg = Math.abs(angleDelta(before, rig.screenRotation)) / DEG;
-  check('crossing the dead zone eases rather than snapping',
-    stepDeg > 0 && stepDeg < 4,
+  check('crossing the dead zone eases rather than snapping', stepDeg > 0 && stepDeg < 3,
     `${stepDeg.toFixed(2)}deg in one frame`);
+
+  // A sudden 180 degree heading flip (a spin) must still be capped: the world
+  // may only move by maxRotateSpeed * dt in a frame.
+  car.heading = Math.PI;
+  const flipBefore = rig.screenRotation;
+  rig.update(car, 0, STEP * 1000, 0);
+  const flipDeg = Math.abs(angleDelta(flipBefore, rig.screenRotation)) / DEG;
+  const capDeg = ((CAMERA.maxRotateSpeed * STEP) / DEG);
+  check('a 180 degree flip is rate limited, not followed instantly',
+    flipDeg <= capDeg + 0.01,
+    `${flipDeg.toFixed(2)}deg vs cap ${capDeg.toFixed(2)}deg`);
 }
 
 // -------------------------------------------------------------- anti-gravity
@@ -268,12 +294,15 @@ console.log('\n[twist] the anti-gravity roll is rate limited too');
   const { frames } = fly({
     seconds: 6,
     input: () => throttle,
-    // A hairpin of a roll: swings the world through a full half turn.
-    twist: (t) => clamp((t - 1) * (Math.PI / 2), 0, Math.PI),
+    // A hairpin of a roll: swings the world through a full half turn, far
+    // faster than the cap allows.
+    twist: (t) => clamp((t - 0.5) * 6, 0, Math.PI),
   });
   check('anti-gravity twist never exceeds the rotation cap',
     worst(frames, (f) => f.rotRate) <= CAMERA.maxRotateSpeed + 0.05,
     `peak ${worst(frames, (f) => f.rotRate).toFixed(2)}`);
+  check('the roll actually happens', worst(frames, (f) => Math.abs(f.leanDeg)) > 1,
+    `max lean ${worst(frames, (f) => f.leanDeg).toFixed(0)}deg`);
   const outside = boxViolations(frames);
   check('car stays in frame through the twist', outside.length === 0, `${outside.length} frames`);
 }
@@ -288,7 +317,6 @@ console.log('\n[views] cycling keeps each preset behaving');
   rig.snap(car);
   check('starts on CHASE', rig.viewName === 'CHASE', rig.viewName);
 
-  // MAP: no rotation at all, and the car centred rather than low in the frame.
   rig.cycle();
   check('cycles to HOOD', rig.viewName === 'HOOD', rig.viewName);
   rig.cycle();
@@ -297,18 +325,19 @@ console.log('\n[views] cycling keeps each preset behaving');
   car.heading = 1.2;
   for (let i = 0; i < 240; i++) rig.update(car, 0, STEP * 1000, 0);
   const at = cam.screen(car.x, car.y);
-  check('MAP ignores the car heading', Math.abs(rig.screenRotation) < 1e-9,
-    `${rig.screenRotation}`);
+  // MAP unwinds to world-up rather than tracking the car, and it gets there by
+  // easing, so it only has to be close after a couple of seconds.
+  check('MAP ignores the car heading', Math.abs(rig.screenRotation) < 1 * DEG,
+    `${(rig.screenRotation / DEG).toFixed(2)}deg`);
   check('MAP centres the car', Math.abs(at.x - WIDTH / 2) < 1 && Math.abs(at.y - HEIGHT / 2) < 1,
     `(${at.x.toFixed(1)},${at.y.toFixed(1)})`);
 
-  // And back round to CHASE, which should re-align the world with the car.
   rig.cycle();
   check('cycles back to CHASE', rig.viewName === 'CHASE', rig.viewName);
   for (let i = 0; i < 600; i++) rig.update(car, 0, STEP * 1000, 0);
-  const dev = Math.abs(angleDelta(rig.screenRotation, FORWARD_TO_SCREEN_UP - car.heading)) / DEG;
-  check('CHASE realigns the world with the car', dev < CAMERA.views[0].angleDeadZoneDeg + 1,
-    `${dev.toFixed(1)}deg`);
+  const lean = Math.abs(angleDelta(rig.screenRotation, FORWARD_TO_SCREEN_UP - car.heading)) / DEG;
+  check('CHASE realigns the car up the screen', lean < CAMERA.views[0].angleDeadZoneDeg + 1,
+    `${lean.toFixed(1)}deg`);
 }
 
 // ------------------------------------------------------------------- summary

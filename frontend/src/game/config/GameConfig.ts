@@ -104,33 +104,33 @@ export const CAMERA = {
   /** Frame-rate independent follow smoothing (higher = snappier). */
   follow: 12,
   /**
-   * How hard the camera is pulled back toward the car's heading once it has
-   * turned past the dead zone (1/s). Because the pull grows from zero at the
-   * edge of the zone, a small turn eases the world around gently instead of
-   * snapping it.
+   * How hard the view is pulled toward the car's heading once it has turned past
+   * the dead zone (1/s). Deliberately gentle: the world eases round *after* the
+   * car instead of snapping to it, so a turn reads as the car moving and the
+   * view smoothly following.
    */
-  rotateGain: 5,
+  rotateGain: 4,
   /**
-   * Hard ceiling on how fast the world may rotate (rad/s), whatever the car
-   * does. Without it a spin would whip the whole view around.
+   * Ceiling on how fast the view may turn (rad/s). Set just above the fastest
+   * car's turn rate, so it never holds the camera back in a normal corner but
+   * still stops a sudden heading flip from whipping the world around.
    */
-  maxRotateSpeed: 2,
+  maxRotateSpeed: 3.6,
   /**
    * Camera presets, cycled with CONTROLS.camera.
    *
    * anchor: where the car rests, as a fraction of the visible half-height below
-   *   the screen centre (0 = dead centre, 0.5 = three quarters down). It is a
-   *   fraction rather than a world distance so the car keeps the same spot on
-   *   screen when the camera pulls back for speed, and it is measured in the
-   *   camera's own frame so it cannot be slung off when the world rotates.
-   * rotate: turn the world with the car so it always faces up the screen.
-   * angleDeadZoneDeg: turning less than this leaves the world completely still,
-   *   so ordinary steering corrections never move the background.
+   *   the screen centre (0 = dead centre, 0.5 = three quarters down). A fraction
+   *   rather than a world distance, so the car holds the same spot on screen
+   *   when the camera pulls back for speed.
+   * rotate: turn the world so the car always points up the screen.
+   * angleDeadZoneDeg: turning less than this leaves the view completely still,
+   *   so straight-line corrections never wobble the background.
    */
   views: [
-    { name: 'CHASE', anchor: 0.22, zoom: 0.85, rotate: true, angleDeadZoneDeg: 12 },
+    { name: 'CHASE', anchor: 0.15, zoom: 0.85, rotate: true, angleDeadZoneDeg: 6 },
     { name: 'HOOD', anchor: 0.1, zoom: 1.1, rotate: true, angleDeadZoneDeg: 4 },
-    // Overhead: no rotation, the car just sits in the middle of the frame.
+    // Overhead map: no rotation, the car just sits in the middle of the frame.
     { name: 'MAP', anchor: 0, zoom: 0.5, rotate: false, angleDeadZoneDeg: 0 },
   ],
   /** Forward speed (px/s) above which the camera pulls back for a speed feel. */
