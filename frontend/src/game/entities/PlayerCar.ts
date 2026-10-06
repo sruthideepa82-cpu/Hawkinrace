@@ -11,7 +11,6 @@ export class PlayerCar extends CarView {
   private tireMarks!: Phaser.GameObjects.RenderTexture;
   /** Reusable dots stamped into `tireMarks` (created once, never per frame). */
   private tireDots: Phaser.GameObjects.Arc[] = [];
-  private exhaustEmitter!: Phaser.GameObjects.Particles.ParticleEmitter;
   private youLabel!: Phaser.GameObjects.Text;
 
   constructor(scene: Phaser.Scene, config: RacerConfig, worldWidth: number, worldHeight: number) {
@@ -25,17 +24,6 @@ export class PlayerCar extends CarView {
       scene.add.circle(0, 0, 3, 0x111111, 0.1).setVisible(false),
     ];
 
-    this.exhaustEmitter = scene.add
-      .particles(0, 0, 'particle-dot', {
-        scale: { start: 0.2, end: 0 },
-        alpha: { start: 0.5, end: 0 },
-        speed: 20,
-        lifespan: 400,
-        blendMode: 'ADD',
-        emitting: false,
-      })
-      .setDepth(9);
-
     this.youLabel = scene.add.text(0, 0, 'YOU', {
       fontFamily: 'monospace',
       fontSize: '12px',
@@ -46,20 +34,13 @@ export class PlayerCar extends CarView {
   }
 
   override sync(physics: CarViewState, opts: CarViewOptions = {}): void {
-    const { braking = false, accelerating = false, speed = 0 } = opts;
+    const { braking = false, speed = 0 } = opts;
     super.sync(physics, opts);
 
     // Sync YOU label
     this.youLabel.setPosition(physics.x, physics.y - 30);
 
-    // Exhaust
-    if (accelerating && speed < 150) {
-      this.exhaustEmitter.setPosition(
-        physics.x - Math.cos(physics.heading) * 20,
-        physics.y - Math.sin(physics.heading) * 20,
-      );
-      this.exhaustEmitter.emitParticle(1);
-    }
+    // Exhaust is now handled in CarView.ts sync()
 
     if (!braking || speed <= 50) return;
 

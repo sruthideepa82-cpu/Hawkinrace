@@ -107,11 +107,62 @@ export class CameraRig {
     }
   }
 
-  updateIntro(car: CarPhysics, _deltaMs: number, introRemainingMs: number, totalIntroMs: number): void {
+  updateIntro(car: CarPhysics, _deltaMs: number, introRemainingMs: number, totalIntroMs: number, trackId?: string): void {
     const elapsed = totalIntroMs - introRemainingMs;
-    const progress = Math.min(elapsed / totalIntroMs, 1);
+    
+    if (trackId === 'upside-down') {
+      // 5.5s Cinematic Sequence
+      // 0.0-1.0: Low close to ground, fog
+      // 1.0-3.0: Panning toward Vecna in distance
+      // 3.0-4.0: Vecna turns head (animation handled in GameScene), lightning
+      // 4.0-5.5: Move behind player car
+      
+      this.rotation = wrapAngle(this.idealRotation(car, 0));
+      this.camera.setRotation(this.rotation);
+      
+      const target = this.followTarget(car);
+      
+      // Start way ahead and to the side (where Vecna is standing)
+      // Vecna will be placed around (car.x + cos(heading)*800, car.y + sin(heading)*800) in GameScene
+      const vecnaX = car.x + Math.cos(car.heading) * 600 - Math.sin(car.heading) * 300;
+      const vecnaY = car.y + Math.sin(car.heading) * 600 + Math.cos(car.heading) * 300;
+      
+      let cx = vecnaX;
+      let cy = vecnaY;
+      let targetZoom = 1.2;
 
-    // E.g., start 500px ahead and zoom out, swoop in to normal follow.
+      if (elapsed < 1000) {
+        // Phase 1: Close up on ground
+        const p = elapsed / 1000;
+        cx = vecnaX + 100 * p;
+        cy = vecnaY + 50 * p;
+        targetZoom = 1.3 - p * 0.1;
+      } else if (elapsed < 4000) {
+        // Phase 2 & 3: Panning past Vecna
+        const p = (elapsed - 1000) / 3000;
+        cx = vecnaX + 100 - p * 300;
+        cy = vecnaY + 50 - p * 150;
+        targetZoom = 1.2;
+      } else {
+        // Phase 4: Swoop to car
+        const p = (elapsed - 4000) / 1500;
+        const ease = 1 - Math.pow(1 - p, 4); // Quintic ease out
+        const startX = vecnaX - 200;
+        const startY = vecnaY - 100;
+        cx = startX + (target.x - startX) * ease;
+        cy = startY + (target.y - startY) * ease;
+        targetZoom = 1.2 + (this.viewZoom - 1.2) * ease;
+      }
+
+      this.camera.centerOn(cx, cy);
+      this.camera.setZoom(targetZoom);
+      return;
+    }
+
+    // Default intro
+    const elapsedDef = totalIntroMs - introRemainingMs;
+    const progressDef = Math.min(elapsedDef / totalIntroMs, 1);
+
     this.rotation = wrapAngle(this.idealRotation(car, 0));
     this.camera.setRotation(this.rotation);
 
@@ -120,7 +171,7 @@ export class CameraRig {
     const startY = car.y + Math.sin(car.heading) * 500;
     
     // Cubic ease out
-    const ease = 1 - Math.pow(1 - progress, 3);
+    const ease = 1 - Math.pow(1 - progressDef, 3);
     
     const cx = startX + (target.x - startX) * ease;
     const cy = startY + (target.y - startY) * ease;

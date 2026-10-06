@@ -12,6 +12,7 @@ import { InputController } from '../systems/InputController';
 import { RaceSession, type Racer } from '../systems/RaceSession';
 import { CHARACTERS } from '../../data/characters';
 import { CARS } from '../../data/cars';
+import { VecnaEntity } from '../entities/VecnaEntity';
 
 const PHYSICS_STEP = 1 / 120;
 const MAX_FRAME_SECONDS = 0.05;
@@ -31,6 +32,7 @@ export class GameScene extends Phaser.Scene {
   private resultReported = false;
   private previousState: string = 'countdown';
   private rainEmitter?: Phaser.GameObjects.Particles.ParticleEmitter;
+  private vecna?: VecnaEntity;
   private lapTransitionMs: number = 0;
 
   constructor() {
@@ -119,6 +121,15 @@ export class GameScene extends Phaser.Scene {
 
       // Deep red/crimson fog overlay
       this.add.rectangle(0, 0, layout.worldWidth, layout.worldHeight, 0x1f000a, 0.25).setOrigin(0, 0).setDepth(5).setBlendMode(Phaser.BlendModes.SCREEN);
+      
+      // Place Vecna in the distance relative to the player's start position
+      const heading = this.session.player.physics.heading;
+      const px = this.session.player.physics.x;
+      const py = this.session.player.physics.y;
+      const vecnaX = px + Math.cos(heading) * 600 - Math.sin(heading) * 300;
+      const vecnaY = py + Math.sin(heading) * 600 + Math.cos(heading) * 300;
+      this.vecna = new VecnaEntity(this, vecnaX, vecnaY);
+      this.vecna.setRotation(heading - Math.PI / 2); // Face the road
     }
 
     // Chase camera: pins the car to a fixed spot on screen and turns the world
@@ -201,9 +212,17 @@ export class GameScene extends Phaser.Scene {
 
     const hud = this.session.hudData();
     const over = hud.state === 'finished' || hud.state === 'failed';
+    const isUpsideDown = this.bridge.config.trackId === 'upside-down';
+
+    if (this.vecna) {
+      const totalIntroMs = isUpsideDown ? 5500 : 3500;
+      const elapsed = totalIntroMs - hud.introRemainingMs;
+      this.vecna.update(_time, elapsed);
+    }
 
     if (hud.state === 'intro') {
-      this.cameraRig.updateIntro(player.physics, deltaMs, hud.introRemainingMs, 3500);
+      const introTotal = isUpsideDown ? 5500 : 3500;
+      this.cameraRig.updateIntro(player.physics, deltaMs, hud.introRemainingMs, introTotal, this.bridge.config.trackId);
     } else if (over) {
       this.cameraRig.updateResults(player.physics, deltaMs);
     } else {

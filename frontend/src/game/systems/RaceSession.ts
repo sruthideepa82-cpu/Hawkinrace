@@ -140,7 +140,8 @@ export class RaceSession {
     configs: readonly RacerConfig[],
     driverFor?: (config: RacerConfig, tuning: CarTuning) => AiDriver | null,
   ) {
-    this.race = new RaceManager(RACE.countdownSeconds);
+    const isUpsideDown = layout.definition.id === 'upside-down';
+    this.race = new RaceManager(RACE.countdownSeconds, isUpsideDown ? 5.5 : 3.5);
     this.racers = configs.map((c) => new Racer(c, layout, driverFor));
 
     this.placeOnGrid();

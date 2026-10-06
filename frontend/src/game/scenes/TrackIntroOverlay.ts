@@ -22,15 +22,15 @@ export class TrackIntroOverlay {
     const paddingY = height - 160;
 
     // Track Name
-    this.trackNameText = scene.add.text(paddingX, paddingY, '', {
+    this.trackNameText = scene.add.text(paddingX, paddingY - 56, '', {
       fontFamily: FONTS.display,
       fontSize: '56px',
       color: '#ffffff',
       fontStyle: 'bold'
     }).setOrigin(0, 1).setAlpha(0);
 
-    // Track Number (small overlay above track name)
-    this.trackNumberText = scene.add.text(paddingX, paddingY - 56, 'TRACK 01', {
+    // Track Number
+    this.trackNumberText = scene.add.text(paddingX, paddingY, 'TRACK 01', {
       fontFamily: FONTS.mono,
       fontSize: '16px',
       color: '#ff2e63',
@@ -68,7 +68,7 @@ export class TrackIntroOverlay {
   }
 
   update(introRemainingMs: number, state: string) {
-    if (state === 'intro' && !this.isShown && introRemainingMs < 3000) {
+    if (state === 'intro' && !this.isShown && introRemainingMs > 100) {
       this.show();
     } else if (state !== 'intro' && this.isShown) {
       this.hide();
@@ -79,7 +79,7 @@ export class TrackIntroOverlay {
     this.isShown = true;
     const track = getTrackDefinition(this.bridge.config.trackId);
     
-    // Assign generic track numbers based on some hash or simple id mapping
+    // Assign generic track numbers
     let trackNum = '01';
     if (track.id.includes('forest')) trackNum = '02';
     if (track.id.includes('lab')) trackNum = '03';
@@ -100,6 +100,30 @@ export class TrackIntroOverlay {
     if (track.id === 'upside-down') condition = 'ANTI-GRAVITY CIRCUIT';
     if (track.id === 'hawkins-forest') condition = 'FOREST RALLY';
     this.conditionText.setText(condition);
+
+    // If it is upside down, make the typography small and cinematic
+    if (track.id === 'upside-down') {
+      this.trackNameText.setFontSize('24px').setColor('#ff2244');
+      this.trackNumberText.setFontSize('12px').setColor('#9a94b8');
+      
+      // Shift everything closer together for the small layout
+      const paddingY = GAME.height - 160;
+      this.trackNameText.setY(paddingY - 20);
+      this.trackNumberText.setY(paddingY);
+      
+      this.difficultyText.setFontSize('12px').setColor('#ff2244');
+      this.conditionText.setFontSize('12px').setColor('#9a94b8');
+    } else {
+      this.trackNameText.setFontSize('56px').setColor('#ffffff');
+      this.trackNumberText.setFontSize('16px').setColor('#ff2e63');
+      
+      const paddingY = GAME.height - 160;
+      this.trackNameText.setY(paddingY - 56);
+      this.trackNumberText.setY(paddingY);
+      
+      this.difficultyText.setFontSize('14px').setColor('#ff2e63');
+      this.conditionText.setFontSize('14px').setColor('#9a94b8');
+    }
 
     // Animate in
     this.scene.tweens.add({
