@@ -262,15 +262,35 @@ export class TrackLayout {
     return { type: 'grass', dragMultiplier: 3.0 };
   }
 
-  /** Returns a correction if a circle at (x, y) hits a hard boundary (buildings/fences). */
-  resolveBoundary(x: number, y: number, radius: number): CollisionResult | null {
-    // Hard limit is the outer edge of the sidewalk
-    const half = this.roadWidth / 2;
-    const hardLimit = half + 40 - radius;
+  /**
+   * Returns a correction if a car at (x, y) heading `heading` would put any part
+   * of its footprint past the road edge (buildings/fences).
+   *
+   * `halfLength`/`halfWidth` describe the car's box along and across its
+   * heading. Projecting that box onto the direction of the barrier is what keeps
+   * a corner or a wheel from poking through when the car is not parallel to the
+   * road -- a single collision radius cannot, because the car is long and thin.
+   */
+  resolveBoundary(
+    x: number,
+    y: number,
+    heading: number,
+    halfLength: number,
+    halfWidth: number,
+  ): CollisionResult | null {
     const { distance, point } = nearestOnClosedPolyline(this.centerline, x, y);
-    if (distance <= hardLimit || distance === 0) return null;
+    if (distance === 0) return null;
+
     const ox = (x - point.x) / distance;
     const oy = (y - point.y) / distance;
-    return { x: point.x + ox * hardLimit, y: point.y + oy * hardLimit, nx: -ox, ny: -oy };
+    // Support of the car's box along the outward direction: how far the furthest
+    // corner reaches toward the barrier for the way the car is pointing.
+    const fx = Math.cos(heading);
+    const fy = Math.sin(heading);
+    const reach = halfLength * Math.abs(fx * ox + fy * oy) + halfWidth * Math.abs(fx * oy - fy * ox);
+    const limit = this.roadWidth / 2 - reach;
+    if (distance <= limit) return null;
+
+    return { x: point.x + ox * limit, y: point.y + oy * limit, nx: -ox, ny: -oy };
   }
 }

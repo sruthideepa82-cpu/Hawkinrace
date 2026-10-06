@@ -81,6 +81,18 @@ export const CAR = {
   /** How fast the wheel re-centres when keys are released. */
   steerReturn: 8,
   collisionRadius: 16,
+  /**
+   * How far past the chassis the wheels and shadow reach. It counts as part of
+   * the car for track-edge collision, so the whole car stays on the asphalt
+   * instead of letting a wheel clip through the kerb.
+   */
+  footprintPadding: 6,
+  /**
+   * How fast the wall assist eases a car straight while it is against the edge
+   * (rad/s). Deliberately gentle: it should nudge the nose back toward the road,
+   * not wrestle the wheel off the driver.
+   */
+  wallAssistRate: 1.2,
   /** How much speed is lost in a head-on wall hit (0-1). Sliding barely scrubs. */
   wallScrub: 0.6,
   wallBounce: 0.25,

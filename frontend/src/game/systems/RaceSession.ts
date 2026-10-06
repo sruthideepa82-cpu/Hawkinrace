@@ -113,6 +113,14 @@ const GRID_COLUMNS = 2;
 const SEPARATION_PASSES = 3;
 
 /**
+ * Half the car's collision footprint: the chassis plus the wheels and shadow
+ * that stick out past it. Used to keep the whole car on the asphalt rather than
+ * letting a corner clip through the kerb.
+ */
+const CAR_HALF_LENGTH = CAR.width / 2 + CAR.footprintPadding;
+const CAR_HALF_WIDTH = CAR.height / 2 + CAR.footprintPadding;
+
+/**
  * Glue for one race: owns every car on the grid, advances physics, applies track
  * and car-to-car collisions, feeds each car through the shared lap/checkpoint
  * logic, and ranks the field. Phaser-free so it stays easy to reason about.
@@ -190,6 +198,8 @@ export class RaceSession {
     for (const racer of this.racers) {
       prevs.push({ x: racer.physics.x, y: racer.physics.y });
       racer.justFinished = false;
+      // Whether the driver is pushing forward, which is what arms the wall assist.
+      let accelerating = false;
 
       if (racer.finished) {
         // Out of the race: no input, and no lap progress from here on. It still
@@ -204,6 +214,8 @@ export class RaceSession {
             ? playerInput
             : racer.ai!.update(dt, this.layout, racer.physics, this.rivalsFor(racer), !racer.nitro.isEmpty);
 
+        accelerating = input.accelerate && !input.brake;
+
         // Nitro is driven entirely through InputState, so the player and the AI
         // share one code path.
         const wantBoost = racing && input.nitro && input.accelerate && !input.brake;
@@ -212,8 +224,20 @@ export class RaceSession {
         racer.physics.step(dt, input, surface.dragMultiplier, boost);
       }
 
-      const hit = this.layout.resolveBoundary(racer.physics.x, racer.physics.y, CAR.collisionRadius);
-      if (hit) racer.physics.applyCollision(hit);
+      const hit = this.layout.resolveBoundary(
+        racer.physics.x, racer.physics.y, racer.physics.heading, CAR_HALF_LENGTH, CAR_HALF_WIDTH,
+      );
+      if (hit) {
+        // Held against the edge under power: ease the nose straight so the car
+        // slides along the barrier instead of grinding to a stop on it. The
+        // assist moves the nose, which changes how far the car reaches toward
+        // the barrier, so the clamp below uses the heading it ends up with.
+        if (accelerating) racer.physics.alignToWall(hit.nx, hit.ny, CAR.wallAssistRate, dt);
+        const seated = this.layout.resolveBoundary(
+          racer.physics.x, racer.physics.y, racer.physics.heading, CAR_HALF_LENGTH, CAR_HALF_WIDTH,
+        );
+        racer.physics.applyCollision(seated ?? hit);
+      }
     }
 
     // 2. Cars cannot occupy the same space.
@@ -222,7 +246,9 @@ export class RaceSession {
     // Car-to-car pushes can shove a car past the barrier, so re-clamp the track
     // boundary afterwards and keep cars off each other as well.
     for (const racer of this.racers) {
-      const hit = this.layout.resolveBoundary(racer.physics.x, racer.physics.y, CAR.collisionRadius);
+      const hit = this.layout.resolveBoundary(
+        racer.physics.x, racer.physics.y, racer.physics.heading, CAR_HALF_LENGTH, CAR_HALF_WIDTH,
+      );
       if (hit) racer.physics.applyCollision(hit);
     }
 

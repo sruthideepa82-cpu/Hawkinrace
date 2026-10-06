@@ -1,4 +1,5 @@
 import type { CarTuning } from '../config/carTuning';
+import { angleDelta, clamp } from '../utils/geometry';
 
 export interface InputState {
   accelerate: boolean;
@@ -163,5 +164,20 @@ export class CarPhysics {
     const scrub = 0.95; 
     this.vx *= scrub;
     this.vy *= scrub;
+  }
+
+  /**
+   * Wall assist. Eases the nose toward the barrier the car is leaning on, so a
+   * car held against the edge under power steers itself straight and slides free
+   * instead of grinding its nose into the wall. `nx`/`ny` is the barrier normal,
+   * pointing back toward the road. Only the heading moves, never the speed.
+   */
+  alignToWall(nx: number, ny: number, rate: number, dt: number): void {
+    // The barrier runs perpendicular to its normal. Aim for whichever way along
+    // it is closer to where the nose already points, so the assist straightens
+    // the car rather than spinning it round.
+    const along = Math.atan2(nx, -ny);
+    const target = Math.abs(angleDelta(this.heading, along)) <= Math.PI / 2 ? along : along + Math.PI;
+    this.heading += clamp(angleDelta(this.heading, target), -rate * dt, rate * dt);
   }
 }
