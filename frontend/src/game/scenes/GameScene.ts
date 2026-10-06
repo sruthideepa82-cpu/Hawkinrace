@@ -198,8 +198,8 @@ export class GameScene extends Phaser.Scene {
   }
 
   /**
-   * Called once the race is over for any reason, so the race never ends early
-   * just because the player crossed the line first.
+   * Called once the race is over for any reason -- the player taking the
+   * chequered flag, or every AI car finishing with the player still on track.
    *
    * The session is the single authority on whether that moment has arrived; this
    * just reacts to the state changing. A failed race uses a shorter handoff so

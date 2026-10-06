@@ -16,8 +16,9 @@ export interface RaceSnapshot {
 /**
  * Owns the shared race state and the race clock. It knows nothing about any
  * individual car: lap counting lives in `LapManager` (one per car), and the race
- * is declared over by the session -- either because every entrant has finished,
- * or because the player has been beaten to the line by all of them.
+ * is declared over by the session -- either because the player took the
+ * chequered flag, or because every AI car finished with the player still out on
+ * track.
  */
 export class RaceManager {
   private state: RaceState = 'countdown';
@@ -81,7 +82,8 @@ export class RaceManager {
   }
 
   /**
-   * Called once every car has taken the chequered flag.
+   * Called once the player has taken the chequered flag, which ends the race for
+   * them however much of the field is still running behind.
    *
    * Guarded against running after the race has already ended for any other
    * reason, so a failure that landed on the same frame cannot be overwritten.

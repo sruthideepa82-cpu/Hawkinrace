@@ -271,11 +271,20 @@ export class RaceSession {
    *
    * Two outcomes, and the order of these checks is the whole rule:
    *
-   *  - Every car finished -> the race is complete. Checked first, because a
-   *    player who finished last is still a finisher, not a failure.
+   *  - The player took the chequered flag -> the race is complete. Checked
+   *    first, because a player who finished last is still a finisher, not a
+   *    failure.
    *  - Every AI finished and the player had not -> the player failed. One or two
    *    AI finishing first is NOT a failure; that is the race working, with the
    *    player mid-field and still racing for a placing.
+   *
+   * The player's final lap is what ends the race, not the whole field coming
+   * home. A finished player has no input left to give, so sitting through
+   * whatever the AI still have to run just delays the results screen for no
+   * gain. AI that are still on track when the flag drops are ranked behind the
+   * player by how far they actually got -- `standings` already sorts finished
+   * cars ahead of the rest -- so the final classification is unchanged, it just
+   * arrives as soon as the player's race is decided.
    *
    * There is no timer anywhere in here. Both conditions are read off real finish
    * state on the frame it becomes true, and this only runs inside the
@@ -283,11 +292,11 @@ export class RaceSession {
    * actually finished) nor early.
    */
   private resolveOutcome(): void {
-    if (this.racers.every((r) => r.finished)) {
+    if (this.player.finished) {
       this.race.finish();
       return;
     }
-    if (!this.player.finished && this.aiFinishedCount() >= this.aiCount) {
+    if (this.aiFinishedCount() >= this.aiCount) {
       this.race.fail();
     }
   }
@@ -427,9 +436,13 @@ export class RaceSession {
   /**
    * Final result once the race is over, otherwise null.
    *
-   * The race is over in either of two cases: every car finished, or the player
-   * was beaten to the line by all of the AI. `outcome` tells the results screen
-   * which one happened so a failed race never reads as "RACE COMPLETE".
+   * The race is over in either of two cases: the player took the chequered
+   * flag, or the player was beaten to the line by all of the AI. `outcome` tells
+   * the results screen which one happened so a failed race never reads as
+   * "RACE COMPLETE".
+   *
+   * Cars still on track at that moment are included in the classification
+   * without a finish time, ordered behind the players who took the flag.
    */
   result(): RaceResult | null {
     if (!this.race.isOver) return null;
