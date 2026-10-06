@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { FONTS, GAME } from '../config/GameConfig';
 import { getTrackDefinition } from '../config/tracks';
+import { TRACKS as TRACK_LIST } from '../../data/tracks';
 import type { RaceBridge } from '../bridge';
 
 export class TrackIntroOverlay {
@@ -78,27 +79,24 @@ export class TrackIntroOverlay {
   private show() {
     this.isShown = true;
     const track = getTrackDefinition(this.bridge.config.trackId);
-    
-    // Assign generic track numbers
-    let trackNum = '01';
-    if (track.id.includes('forest')) trackNum = '02';
-    if (track.id.includes('lab')) trackNum = '03';
-    if (track.id.includes('upside-down')) trackNum = '05';
+    // The menu data drives the card, so a newly added map labels itself
+    // correctly instead of needing a line added here for every track.
+    const info = TRACK_LIST.find((t) => t.id === track.id);
 
-    this.trackNameText.setText(track.name.toUpperCase());
+    // Position in the track list, so numbers never collide or skip.
+    const index = TRACK_LIST.findIndex((t) => t.id === track.id);
+    const trackNum = String(index >= 0 ? index + 1 : 1).padStart(2, '0');
+
+    this.trackNameText.setText((info?.name ?? track.name).toUpperCase());
     this.trackNumberText.setText(`TRACK ${trackNum}`);
-    
-    // Map difficulty
-    let difficulty = 'MEDIUM';
-    if (track.id === 'upside-down') difficulty = 'EXTREME';
-    if (track.id === 'hawkins-lab') difficulty = 'HARD';
-    this.difficultyText.setText(difficulty);
 
-    // Condition
-    let condition = 'CLEAR NIGHT';
-    if (track.id === 'hawkins-streets') condition = 'NIGHT RACE';
-    if (track.id === 'upside-down') condition = 'ANTI-GRAVITY CIRCUIT';
-    if (track.id === 'hawkins-forest') condition = 'FOREST RALLY';
+    this.difficultyText.setText((info?.difficulty ?? 'Medium').toUpperCase());
+
+    // Environment + weather, except the upside down circuit, which is a
+    // different kind of circuit rather than a different kind of weather.
+    const condition = track.id === 'upside-down'
+      ? 'ANTI-GRAVITY CIRCUIT'
+      : `${info?.environment ?? 'Circuit'} · ${info?.weather ?? 'Clear'}`.toUpperCase();
     this.conditionText.setText(condition);
 
     // If it is upside down, make the typography small and cinematic

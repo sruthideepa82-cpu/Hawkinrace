@@ -15,6 +15,7 @@ import { LapManager } from '../src/game/systems/LapManager';
 import { RACE, CAR } from '../src/game/config/GameConfig';
 import { CHARACTERS } from '../src/data/characters';
 import { CARS } from '../src/data/cars';
+import { TRACKS } from '../src/data/tracks';
 import type { InputState } from '../src/game/entities/CarPhysics';
 
 const STEP = 1 / 120;
@@ -249,7 +250,7 @@ console.log('\n[race] full 4-car race on Hawkins Streets');
 const street = runRace('hawkins-streets', 'steve', 'falcon-gt');
 {
   check('race completed', street.finished);
-  check('all 4 cars finished', street.finalStandings.every((s) => s.finished));
+  checkClassification(street, 'Hawkins Streets');
   check('exactly 4 classified rows', street.finalStandings.length === 4);
   check('positions are 1..4',
     street.finalStandings.map((s) => s.position).join(',') === '1,2,3,4',
@@ -257,7 +258,6 @@ const street = runRace('hawkins-streets', 'steve', 'falcon-gt');
   check('finish order strictly increasing in time',
     street.finalStandings.every((s, i, arr) => i === 0 || (arr[i - 1].finishTimeMs ?? 0) <= (s.finishTimeMs ?? Infinity)));
   check('lap count never exceeded 3', street.maxLapSeen <= 3, `max lap seen ${street.maxLapSeen}`);
-  check('race did not end before all finished', !street.raceEndedBeforeAllFinished);
   check('finished cars stop accruing progress', street.progressAfterFinishStable);
   check('ranking changed during the race', street.orderChanges > 0, `${street.orderChanges} order changes`);
   check('nitro was actually used', street.nitroUsed > 0, `${street.nitroUsed} frames boosting`);
@@ -272,6 +272,20 @@ const street = runRace('hawkins-streets', 'steve', 'falcon-gt');
   console.log(`    leaders seen: ${[...street.distinctLeaders].join(', ')}  (order changes: ${street.orderChanges})`);
 }
 
+// ------------------------------------------------------------------ all maps
+// Every map shown as unlocked must be a map the field can actually race, not
+// just one with a card on the select screen.
+console.log('\n[race] every unlocked map is completable');
+for (const trackId of TRACKS.filter((t) => t.playable).map((t) => t.id)) {
+  const run = runRace(trackId, 'steve', 'falcon-gt');
+  const name = TRACKS.find((t) => t.id === trackId)?.name ?? trackId;
+  check(`${name}: race completes`, run.finished);
+  checkClassification(run, name);
+  check(`${name}: cars stay on the road`, run.maxOffTrackDistance < layoutBound(trackId),
+    `max ${run.maxOffTrackDistance.toFixed(0)}px from centreline`);
+  check(`${name}: lap count never exceeded 3`, run.maxLapSeen <= 3, `max ${run.maxLapSeen}`);
+}
+
 // ------------------------------------------------------------- anti-gravity
 console.log('\n[race] full 4-car race on The Upside Down (anti-gravity)');
 const upside = runRace('upside-down', 'steve', 'falcon-gt');
@@ -279,9 +293,8 @@ const upside = runRace('upside-down', 'steve', 'falcon-gt');
   const layout = new TrackLayout(getTrackDefinition('upside-down'));
   check('track has anti-gravity ranges', (layout.definition.antiGravityRanges?.length ?? 0) > 0);
   check('race completed on anti-gravity track', upside.finished);
-  check('all 4 cars finished', upside.finalStandings.every((s) => s.finished));
+  checkClassification(upside, 'The Upside Down');
   check('lap count never exceeded 3', upside.maxLapSeen <= 3, `max ${upside.maxLapSeen}`);
-  check('AI coped with anti-gravity (all finished)', upside.finalStandings.filter((s) => s.finished).length === 4);
   check('cars stayed attached to the track', upside.maxOffTrackDistance < layout.roadWidth / 2 + 45,
     `max ${upside.maxOffTrackDistance.toFixed(0)}px`);
   console.log('    classification:', upside.finalStandings
@@ -632,8 +645,11 @@ console.log('\n[failure] three AI finishing before the player ends the race');
     check('retry clears the failure state',
       !session.race.isFailed && !session.race.isOver,
       `failed ${session.race.isFailed}, over ${session.race.isOver}`);
-    check('retry returns to countdown',
-      session.race.currentState === 'countdown',
+    // The race opens with the title intro and only then counts down, so a
+    // retry returns to the intro. This used to assert 'countdown', which was
+    // correct before the intro was added and has been stale ever since.
+    check('retry returns to the intro',
+      session.race.currentState === 'intro',
       session.race.currentState);
     check('retry resets every car lap to 1',
       session.racers.every((r) => r.laps.currentLap === 1),
@@ -789,7 +805,7 @@ console.log('\n[retry] full reset restores every car');
     partial.racers.map((r, i) => `${afterNitro[i].toFixed(1)}/${r.tuning.nitroCapacity.toFixed(1)}`).join(' '));
   check('retry clears finish positions', afterPos.every((p) => p === null));
   check('retry stops the cars', afterSpeed.every((s) => s < 1), afterSpeed.map((s) => s.toFixed(1)).join(','));
-  check('retry returns to countdown', state === 'countdown', state);
+  check('retry returns to the intro', state === 'intro', state);
   const onRoad = partial.racers.map((r) => layout.locate(r.physics.x, r.physics.y).distance);
   check('retry puts every car back on the grid', onRoad.every((d) => d < layout.roadWidth / 2));
   void run;
@@ -801,16 +817,67 @@ console.log('\n[countdown] field is held still before the lights go out');
   const layout = new TrackLayout(getTrackDefinition('hawkins-streets'));
   const session = new RaceSession(layout, buildGrid(CHARACTERS[0], CARS[0]));
   const before = session.racers.map((r) => ({ x: r.physics.x, y: r.physics.y }));
-  for (let i = 0; i < 120 * 2.5; i++) {
-    session.step(STEP, { accelerate: true, brake: false, steer: 0, nitro: false });
-  }
-  const drift = Math.max(...session.racers.map((r, i) =>
+
+  // A race opens with the title intro and only THEN counts down, so "before
+  // the lights go out" spans both phases. This used to step 2.5s and expect
+  // 'countdown', which it could never see: the intro alone runs 3.5s.
+  const stepFor = (seconds: number) => {
+    for (let i = 0; i < Math.round(seconds / STEP); i++) {
+      session.step(STEP, { accelerate: true, brake: false, steer: 0, nitro: false });
+    }
+  };
+  const drift = () => Math.max(...session.racers.map((r, i) =>
     Math.hypot(r.physics.x - before[i].x, r.physics.y - before[i].y)));
-  check('no car moves during the countdown', drift < 1, `drift ${drift.toFixed(3)}px`);
-  check('state is still countdown at 2.5s', session.race.currentState === 'countdown');
+
+  stepFor(2.5);
+  check('still in the intro at 2.5s', session.race.currentState === 'intro', session.race.currentState);
+  check('no car moves during the intro', drift() < 1, `drift ${drift().toFixed(3)}px`);
+
+  // Past the 3.5s intro and into the 3s countdown.
+  stepFor(2);
+  check('counting down once the intro is done', session.race.currentState === 'countdown', session.race.currentState);
+  check('no car moves during the countdown', drift() < 1, `drift ${drift().toFixed(3)}px`);
+
+  stepFor(3.1);
+  check('lights go out into racing', session.race.currentState === 'racing', session.race.currentState);
 }
 
 // ------------------------------------------------------------------- summary
+/**
+ * Asserts the classification is coherent at the moment the race ends.
+ *
+ * The race deliberately ends when the PLAYER takes the chequered flag, even
+ * with AI still running (see `RaceSession.resolveOutcome`). So "every car
+ * finished" is the wrong thing to assert -- a finished player has no input
+ * left to give, and waiting out the rest of the field just delays the results
+ * screen. What must hold instead is that the whole grid is classified, that
+ * anyone who took the flag is ranked ahead of anyone who did not, and that
+ * cars still on track carry no invented finish time.
+ */
+function checkClassification(run: RunResult, trackName: string): void {
+  const rows = run.finalStandings;
+  const player = rows.find((s) => s.isPlayer);
+
+  check(`${trackName}: the whole grid is classified`, rows.length === 4, `${rows.length} rows`);
+  check(`${trackName}: the player took the chequered flag`, player?.finished === true,
+    `player finished ${player?.finished}`);
+  check(`${trackName}: at least one car took the flag`,
+    rows.some((s) => s.finished), `${rows.filter((s) => s.finished).length} finished`);
+
+  const lastFinished = Math.max(...rows.filter((s) => s.finished).map((s) => s.position));
+  const firstUnfinished = Math.min(...rows.filter((s) => !s.finished).map((s) => s.position), Infinity);
+  check(`${trackName}: finishers are ranked ahead of cars still running`,
+    firstUnfinished === Infinity || firstUnfinished > lastFinished,
+    `last finisher P${lastFinished}, first still running P${firstUnfinished}`);
+
+  check(`${trackName}: cars still running are credited with no finish time`,
+    rows.filter((s) => !s.finished).every((s) => s.finishTimeMs === null),
+    rows.map((s) => `${s.characterName}:${s.finishTimeMs}`).join(' '));
+
+  check(`${trackName}: every classified row has a position`,
+    rows.every((s) => s.position >= 1 && s.position <= 4));
+}
+
 function layoutBound(trackId: string): number {
   return new TrackLayout(getTrackDefinition(trackId)).roadWidth / 2 + 45;
 }
