@@ -36,7 +36,7 @@ const BASE_TUNING: Omit<CarTuning, 'maxSpeed' | 'acceleration' | 'steerRate' | '
 
 /** Base character of each chassis, before driver stats are layered on. */
 export const VEHICLE_CONFIG: Record<CarId, CarTuning> = {
-  'falcon-gt': {
+  'apex-vulcan': {
     ...BASE_TUNING,
     maxSpeed: 600,
     acceleration: 200,      // Smooth, progressive buildup
@@ -46,7 +46,7 @@ export const VEHICLE_CONFIG: Record<CarId, CarTuning> = {
     nitroAccelBoost: 1.9,
     nitroCapacity: 3.0,
   },
-  'night-runner': {
+  'venom-verde': {
     ...BASE_TUNING,
     maxSpeed: 550,
     acceleration: 250,      // Quicker acceleration
@@ -59,7 +59,20 @@ export const VEHICLE_CONFIG: Record<CarId, CarTuning> = {
     nitroAccelBoost: 2.0,
     nitroCapacity: 2.6,
   },
-  'hawk-xr': {
+  'shadow-gt': {
+    ...BASE_TUNING,
+    maxSpeed: 650,
+    acceleration: 220,
+    brakeForce: 580,
+    coastFriction: 32,
+    maxReverseSpeed: 200,
+    steerRate: 3.2,
+    lateralGrip: 4.5,
+    nitroSpeedBoost: 1.25,
+    nitroAccelBoost: 1.95,
+    nitroCapacity: 3.5,
+  },
+  'inferno-rs': {
     ...BASE_TUNING,
     maxSpeed: 700,          // Higher top speed
     acceleration: 180,      // Needs more space
@@ -92,7 +105,7 @@ export function createRacerTuning(
   stats: CharacterStats,
   statWeight: number = 1,
 ): CarTuning {
-  const base = VEHICLE_CONFIG[carId as CarId] ?? VEHICLE_CONFIG['falcon-gt'];
+  const base = VEHICLE_CONFIG[carId as CarId] ?? VEHICLE_CONFIG['apex-vulcan'];
   const blend = (stat: number) => 6 + (stat - 6) * statWeight;
   return {
     ...base,
@@ -105,5 +118,5 @@ export function createRacerTuning(
 }
 
 export function getCarTuning(id: string): CarTuning {
-  return VEHICLE_CONFIG[id as CarId] ?? VEHICLE_CONFIG['falcon-gt'];
+  return VEHICLE_CONFIG[id as CarId] ?? VEHICLE_CONFIG['apex-vulcan'];
 }

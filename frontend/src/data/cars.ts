@@ -1,4 +1,4 @@
-export type CarId = 'falcon-gt' | 'night-runner' | 'hawk-xr';
+export type CarId = 'apex-vulcan' | 'venom-verde' | 'shadow-gt' | 'inferno-rs';
 
 export interface CarStats {
   speed: number;
@@ -18,9 +18,10 @@ export interface Car {
 }
 
 export const CARS: readonly Car[] = [
-  { id: 'falcon-gt', name: 'FALCON GT', blurb: 'Well-rounded neon coupe.', color: 0xff2e63, unlocked: true, stats: { speed: 7, acceleration: 6, handling: 6, nitro: 5 } },
-  { id: 'night-runner', name: 'NIGHT RUNNER', blurb: 'Quick off the line, loves corners.', color: 0x9b5cff, unlocked: true, stats: { speed: 6, acceleration: 8, handling: 8, nitro: 4 } },
-  { id: 'hawk-xr', name: 'HAWK XR', blurb: 'Top speed monster, needs space.', color: 0xffb02e, unlocked: true, stats: { speed: 9, acceleration: 5, handling: 5, nitro: 7 } },
+  { id: 'apex-vulcan', name: 'APEX VULCAN', blurb: 'Metallic orange supercar with aggressive aerodynamics.', color: 0xff8c00, unlocked: true, stats: { speed: 8, acceleration: 7, handling: 6, nitro: 6 } },
+  { id: 'venom-verde', name: 'VENOM VERDE', blurb: 'Neon-green exotic car with sharp handling.', color: 0x39ff14, unlocked: true, stats: { speed: 7, acceleration: 8, handling: 8, nitro: 5 } },
+  { id: 'shadow-gt', name: 'SHADOW GT', blurb: 'Deep navy-blue performance car built for the track.', color: 0x000080, unlocked: true, stats: { speed: 8, acceleration: 6, handling: 7, nitro: 7 } },
+  { id: 'inferno-rs', name: 'INFERNO RS', blurb: 'Glossy red supercar pushing raw speed.', color: 0xff0000, unlocked: true, stats: { speed: 9, acceleration: 7, handling: 5, nitro: 8 } },
 ];
 
 export const colorToCss = (color: number): string => `#${color.toString(16).padStart(6, '0')}`;

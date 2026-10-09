@@ -39,6 +39,14 @@ export class GameScene extends Phaser.Scene {
     super(SCENE_KEYS.game);
   }
 
+  preload(): void {
+    // Load high-quality car sprites
+    this.load.image('car-apex-vulcan', 'cars/car-apex-vulcan-top.png');
+    this.load.image('car-venom-verde', 'cars/car-venom-verde-top.png');
+    this.load.image('car-shadow-gt', 'cars/car-shadow-gt-top.png');
+    this.load.image('car-inferno-rs', 'cars/car-inferno-rs-top.png');
+  }
+
   create(): void {
     this.bridge = getRaceBridge(this.game);
     this.resultReported = false;

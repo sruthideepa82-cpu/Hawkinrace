@@ -7,7 +7,7 @@ import { useGameStore } from '../store/GameStore';
 export function GaragePage() {
   const { state } = useGameStore();
   const { navigate } = useRouter();
-  const currentCar = CARS.find(c => c.id === (state.selectedCarId || 'falcon-gt')) || CARS[0];
+  const currentCar = CARS.find(c => c.id === (state.selectedCarId || 'apex-vulcan')) || CARS[0];
   const css = colorToCss(currentCar.color);
 
   return (
@@ -19,10 +19,8 @@ export function GaragePage() {
       <div style={{ display: 'flex', gap: '40px', flexWrap: 'wrap' }}>
         <div style={{ flex: '1 1 300px' }}>
           <h2 style={{ fontFamily: 'var(--display)', fontSize: '32px', color: 'var(--red)', marginBottom: '16px' }}>CURRENT CAR</h2>
-          <div className="car-art" style={{ '--accent': css, height: '200px' } as React.CSSProperties}>
-            <div className="car-body" style={{ transform: 'scale(1.5)', marginTop: '40px' }}>
-              <i className="car-window" />
-            </div>
+          <div className="car-art" style={{ '--accent': css, height: '200px', border: 'none', background: 'transparent' } as React.CSSProperties}>
+            <img src={`/cars/car-${currentCar.id}-top.png`} alt={currentCar.name} style={{ width: '80%', objectFit: 'contain' }} />
           </div>
           <h3 style={{ fontFamily: 'var(--display)', fontSize: '48px', marginTop: '16px' }}>{currentCar.name}</h3>
           

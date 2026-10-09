@@ -22,6 +22,7 @@ export interface CarViewOptions {
  */
 export class CarView {
   readonly sprite: Phaser.GameObjects.Image;
+  protected shadow!: Phaser.GameObjects.Image;
   protected brakeLights!: Phaser.GameObjects.Graphics;
   protected headlights!: Phaser.GameObjects.Graphics;
   private nitroGlow!: Phaser.GameObjects.Image;
@@ -32,6 +33,14 @@ export class CarView {
     readonly config: RacerConfig,
   ) {
     this.sprite = scene.add.image(0, 0, ensureCarTexture(scene, config.carId, config.color)).setDepth(10);
+    // Scale the car sprite to roughly 84 pixels wide (the size of the old procedural texture)
+    this.sprite.setScale(84 / this.sprite.width);
+    this.shadow = scene.add.image(0, 0, this.sprite.texture.key)
+      .setDepth(9)
+      .setTint(0x000000)
+      .setAlpha(0.5)
+      .setScale(this.sprite.scaleX);
+
     this.brakeLights = scene.add.graphics().setDepth(11);
     this.headlights = scene.add.graphics().setDepth(11);
     
@@ -53,7 +62,8 @@ export class CarView {
       .setDepth(9)
       .setTint(0xffffff)
       .setAlpha(0)
-      .setBlendMode(Phaser.BlendModes.ADD);
+      .setBlendMode(Phaser.BlendModes.ADD)
+      .setScale(this.sprite.scaleX);
   }
 
   sync(physics: CarViewState, opts: CarViewOptions = {}): void {
@@ -69,6 +79,7 @@ export class CarView {
     }
 
     this.sprite.setPosition(vx, vy).setRotation(heading);
+    this.shadow.setPosition(vx - 4, vy + 4).setRotation(heading);
     this.nitroGlow.setPosition(vx, vy).setRotation(heading).setAlpha(opts.boosting ? 0.55 : 0);
 
     // Headlights
@@ -134,6 +145,7 @@ export class CarView {
 
   destroy(): void {
     this.sprite.destroy();
+    this.shadow.destroy();
     this.brakeLights.destroy();
     this.headlights.destroy();
     this.exhaustEmitter.destroy();

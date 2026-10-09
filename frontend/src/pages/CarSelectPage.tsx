@@ -58,8 +58,8 @@ export function CarSelectPage() {
           const css = colorToCss(car.color);
           return (
             <SelectCard key={car.id} accent={css} selected={state.selectedCarId === car.id} unavailableLabel={car.unlocked ? undefined : 'LOCKED'} onSelect={() => dispatch({ type: 'SELECT_CAR', id: car.id })}>
-              <div className="car-art" style={{ '--accent': css } as CSSProperties} aria-hidden="true">
-                <div className="car-body"><i className="car-window" /></div>
+              <div className="car-art" style={{ '--accent': css, border: 'none', background: 'transparent' } as CSSProperties} aria-hidden="true">
+                <img src={`/cars/car-${car.id}-top.png`} alt={car.name} style={{ width: '80%', objectFit: 'contain' }} />
               </div>
               <h3 className="card-title">{car.name}</h3>
               <p className="card-blurb">{car.blurb}</p>
