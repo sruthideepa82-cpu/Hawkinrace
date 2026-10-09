@@ -1,0 +1,421 @@
+/* ---------- GARAGE REDESIGN ---------- */
+.garage-layout {
+  position: relative;
+  z-index: 1;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: #050508;
+  color: #ece8f7;
+  overflow: hidden;
+  animation: screen-in 0.5s ease both;
+}
+
+.garage-atmosphere {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  overflow: hidden;
+}
+
+.garage-light.red-light {
+  position: absolute;
+  top: 10%;
+  right: -10%;
+  width: 60vw;
+  height: 60vw;
+  background: radial-gradient(circle, rgba(255, 23, 79, 0.15) 0%, transparent 60%);
+  filter: blur(40px);
+}
+
+.garage-light.violet-light {
+  position: absolute;
+  bottom: -20%;
+  left: 10%;
+  width: 50vw;
+  height: 50vw;
+  background: radial-gradient(circle, rgba(139, 92, 246, 0.1) 0%, transparent 70%);
+  filter: blur(50px);
+}
+
+.garage-grain {
+  position: absolute;
+  inset: 0;
+  opacity: 0.03;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");
+}
+
+.garage-header {
+  position: relative;
+  z-index: 10;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 24px 40px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.garage-brand {
+  font-family: var(--display);
+  font-size: 16px;
+  letter-spacing: 0.1em;
+  color: #FF174F;
+  opacity: 0.8;
+}
+
+.garage-steps {
+  display: flex;
+  gap: 16px;
+  list-style: none;
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.25em;
+  padding: 0;
+  margin: 0;
+}
+
+.garage-steps li {
+  color: rgba(255,255,255,0.3);
+}
+
+.garage-steps li.done {
+  color: rgba(255,255,255,0.7);
+}
+
+.garage-steps li.on {
+  color: #fff;
+  text-shadow: 0 0 8px rgba(255,255,255,0.5);
+  border-bottom: 2px solid #FF174F;
+  padding-bottom: 4px;
+}
+
+.garage-profile {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  color: #8B5CF6;
+}
+
+.garage-main {
+  position: relative;
+  z-index: 10;
+  flex: 1;
+  display: flex;
+  flex-direction: row;
+  min-height: 0;
+  padding: 0 40px;
+}
+
+.garage-info-panel {
+  flex: 0 0 350px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding-right: 40px;
+  border-right: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.info-label {
+  font-family: var(--mono);
+  font-size: 12px;
+  letter-spacing: 0.3em;
+  color: #FF174F;
+  margin-bottom: 8px;
+}
+
+.info-title {
+  font-family: var(--display);
+  font-size: clamp(32px, 4vw, 48px);
+  letter-spacing: 0.05em;
+  color: #fff;
+  margin-bottom: 30px;
+  line-height: 1;
+}
+
+.selected-car-details {
+  animation: fade-slide-up 0.4s ease-out both;
+}
+
+@keyframes fade-slide-up {
+  from { opacity: 0; transform: translateY(15px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.car-name {
+  font-family: var(--display);
+  font-size: 42px;
+  letter-spacing: 0.1em;
+  line-height: 1;
+  margin-bottom: 4px;
+  color: #fff;
+  text-shadow: 0 0 20px rgba(255, 255, 255, 0.2);
+}
+
+.car-class {
+  display: inline-block;
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.2em;
+  background: rgba(255, 23, 79, 0.1);
+  color: #FF174F;
+  padding: 4px 10px;
+  border: 1px solid rgba(255, 23, 79, 0.3);
+  margin-bottom: 16px;
+}
+
+.car-description {
+  font-family: var(--body);
+  font-size: 14px;
+  color: #a09cb0;
+  line-height: 1.5;
+  margin-bottom: 30px;
+  min-height: 4.5em;
+}
+
+.car-stats {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.garage-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.g-stat-header {
+  display: flex;
+  justify-content: space-between;
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+}
+
+.g-stat-label {
+  color: #a09cb0;
+}
+
+.g-stat-value {
+  color: #fff;
+  font-weight: bold;
+}
+
+.g-stat-bar-bg {
+  height: 4px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.g-stat-bar-fill {
+  height: 100%;
+  background: #FF174F;
+  box-shadow: 0 0 8px #FF174F;
+  border-radius: 2px;
+  animation: stat-fill-in 0.6s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes stat-fill-in {
+  from { transform: scaleX(0); transform-origin: left; }
+  to { transform: scaleX(1); transform-origin: left; }
+}
+
+.garage-showcase-panel {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+}
+
+.showcase-container {
+  position: relative;
+  width: 80%;
+  height: 80%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: showcase-enter 0.6s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes showcase-enter {
+  from { opacity: 0; transform: scale(0.95) translateX(30px); }
+  to { opacity: 1; transform: scale(1) translateX(0); }
+}
+
+.showcase-car-img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  z-index: 2;
+  filter: drop-shadow(0 20px 30px rgba(0,0,0,0.8));
+}
+
+.showcase-shadow {
+  position: absolute;
+  bottom: 10%;
+  width: 80%;
+  height: 20px;
+  background: rgba(0, 0, 0, 0.8);
+  border-radius: 50%;
+  filter: blur(15px);
+  z-index: 1;
+}
+
+.garage-bottom {
+  position: relative;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+}
+
+.garage-carousel {
+  display: flex;
+  gap: 16px;
+  padding: 24px 40px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.garage-carousel::-webkit-scrollbar { display: none; }
+
+.carousel-item {
+  flex: 0 0 200px;
+  background: rgba(16, 11, 28, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  padding: 16px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-align: left;
+}
+
+.carousel-item:hover {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.3);
+}
+
+.carousel-item.selected {
+  background: rgba(255, 23, 79, 0.1);
+  border: 1px solid #FF174F;
+  box-shadow: 0 0 15px rgba(255, 23, 79, 0.2), inset 0 0 10px rgba(255, 23, 79, 0.1);
+}
+
+.carousel-img-container {
+  width: 60px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.carousel-img-container img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  filter: drop-shadow(0 4px 6px rgba(0,0,0,0.5));
+}
+
+.carousel-item-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.carousel-item-name {
+  font-family: var(--display);
+  font-size: 16px;
+  letter-spacing: 0.05em;
+  color: #fff;
+  white-space: nowrap;
+}
+
+.carousel-item-class {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  color: rgba(255, 255, 255, 0.5);
+}
+.carousel-item.selected .carousel-item-class {
+  color: #FF174F;
+}
+
+.garage-footer {
+  display: flex;
+  justify-content: space-between;
+  padding: 24px 40px;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+  background: rgba(0, 0, 0, 0.4);
+}
+
+.garage-btn {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: rgba(0, 0, 0, 0.5);
+  border: 1px solid #FF174F;
+  color: #fff;
+  font-family: var(--display);
+  font-size: 20px;
+  letter-spacing: 0.15em;
+  padding: 12px 32px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.garage-btn .arrow {
+  color: #FF174F;
+  transition: transform 0.2s;
+}
+
+.garage-btn.back-btn {
+  border-color: rgba(255, 255, 255, 0.2);
+}
+.garage-btn.back-btn .arrow {
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.garage-btn:hover:not(:disabled) {
+  background: rgba(255, 23, 79, 0.15);
+  border-color: #FF174F;
+  box-shadow: 0 0 20px rgba(255, 23, 79, 0.3);
+}
+
+.garage-btn.continue-btn:hover:not(:disabled) .arrow {
+  transform: translateX(4px);
+}
+.garage-btn.back-btn:hover:not(:disabled) .arrow {
+  transform: translateX(-4px);
+  color: #FF174F;
+}
+
+.garage-btn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+@media (max-width: 900px) {
+  .garage-main {
+    flex-direction: column-reverse;
+  }
+  .garage-info-panel {
+    flex: none;
+    border-right: none;
+    padding-right: 0;
+    margin-top: 20px;
+  }
+  .garage-showcase-panel {
+    min-height: 300px;
+  }
+}
+@media (max-width: 600px) {
+  .garage-header, .garage-main, .garage-carousel, .garage-footer {
+    padding-left: 20px;
+    padding-right: 20px;
+  }
+  .garage-steps { display: none; }
+}
