@@ -1,0 +1,263 @@
+/* ---------- CINEMATIC MAIN MENU ---------- */
+.main-menu-layout {
+  position: relative;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  background: #050508;
+  color: #ece8f7;
+  font-family: var(--body);
+}
+
+/* --- Hero Background & Environment --- */
+.hero-background {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+}
+
+.hero-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: right center; /* Keep car in view on right side */
+  animation: slow-zoom 20s ease-out both;
+}
+
+@keyframes slow-zoom {
+  from { transform: scale(1.05); }
+  to { transform: scale(1); }
+}
+
+.hero-gradient-overlay {
+  position: absolute;
+  inset: 0;
+  /* Dark fade from left, vignette, and a slight crimson hue on the right */
+  background: 
+    linear-gradient(90deg, rgba(5,5,8,1) 0%, rgba(5,5,8,0.85) 30%, rgba(5,5,8,0.2) 60%, transparent 100%),
+    radial-gradient(ellipse at center, transparent 0%, rgba(5,5,8,0.6) 100%),
+    linear-gradient(0deg, rgba(5,5,8,1) 0%, transparent 20%);
+}
+
+.hero-fog-overlay {
+  position: absolute;
+  inset: 0;
+  background: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.005' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)' opacity='0.5'/%3E%3C/svg%3E");
+  opacity: 0.15;
+  mix-blend-mode: screen;
+  animation: fog-drift 60s linear infinite;
+}
+
+@keyframes fog-drift {
+  from { background-position: 0 0; }
+  to { background-position: 1000px 500px; }
+}
+
+.hero-grain {
+  position: absolute;
+  inset: 0;
+  opacity: 0.05;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");
+  mix-blend-mode: overlay;
+}
+
+/* --- Menu Content --- */
+.main-menu-content {
+  position: relative;
+  z-index: 10;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  padding: 40px 60px;
+  animation: ui-fade-in 1s cubic-bezier(0.16, 1, 0.3, 1) 0.5s both;
+}
+
+@keyframes ui-fade-in {
+  from { opacity: 0; transform: translateX(-20px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+.menu-header {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.player-profile {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.2em;
+  color: rgba(255, 255, 255, 0.5);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.profile-icon {
+  width: 8px;
+  height: 8px;
+  background: #FF174F;
+  border-radius: 50%;
+  box-shadow: 0 0 8px #FF174F;
+}
+
+.menu-center {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  max-width: 500px;
+}
+
+/* --- Branding --- */
+.menu-brand {
+  margin-bottom: 60px;
+}
+
+.brand-subtitle {
+  font-family: var(--display);
+  font-size: 24px;
+  letter-spacing: 0.3em;
+  color: rgba(255, 255, 255, 0.9);
+  margin-bottom: -10px;
+  transform: skewX(-5deg);
+}
+
+.brand-title {
+  font-family: var(--display);
+  font-size: clamp(60px, 8vw, 100px);
+  letter-spacing: 0.05em;
+  color: #fff;
+  line-height: 1;
+  margin: 0;
+  text-shadow: 0 0 30px rgba(255, 23, 79, 0.4), 0 5px 15px rgba(0, 0, 0, 0.8);
+  transform: skewX(-5deg);
+}
+
+.brand-tagline {
+  font-family: var(--mono);
+  font-size: 12px;
+  letter-spacing: 0.4em;
+  color: #FF174F;
+  margin-top: 16px;
+  text-shadow: 0 0 10px rgba(255, 23, 79, 0.3);
+}
+
+/* --- Navigation --- */
+.cinematic-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.cinematic-nav-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  padding: 16px 24px;
+  text-decoration: none;
+  background: transparent;
+  overflow: hidden;
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  border-left: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.nav-accent-line {
+  position: absolute;
+  left: -1px;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: #FF174F;
+  transform: scaleY(0);
+  transform-origin: center;
+  transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: 0 0 15px #FF174F;
+}
+
+.nav-label {
+  font-family: var(--display);
+  font-size: 32px;
+  letter-spacing: 0.1em;
+  color: rgba(255, 255, 255, 0.6);
+  transition: color 0.3s ease, transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  transform: skewX(-5deg);
+}
+
+.nav-icon {
+  width: 24px;
+  height: 24px;
+  margin-right: 16px;
+  color: rgba(255, 255, 255, 0.4);
+  transition: color 0.3s ease, transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.cinematic-nav-item:hover,
+.cinematic-nav-item:focus {
+  background: linear-gradient(90deg, rgba(255, 23, 79, 0.1) 0%, transparent 100%);
+  border-left-color: transparent;
+  outline: none;
+}
+
+.cinematic-nav-item:hover .nav-accent-line,
+.cinematic-nav-item:focus .nav-accent-line {
+  transform: scaleY(1);
+}
+
+.cinematic-nav-item:hover .nav-label,
+.cinematic-nav-item:focus .nav-label {
+  color: #fff;
+  transform: translateX(12px) skewX(-5deg);
+  text-shadow: 0 0 10px rgba(255, 255, 255, 0.3);
+}
+
+.cinematic-nav-item:hover .nav-icon,
+.cinematic-nav-item:focus .nav-icon {
+  color: #FF174F;
+  transform: translateX(12px);
+}
+
+/* --- Footer --- */
+.menu-footer {
+  margin-top: auto;
+}
+
+.build-version {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  color: rgba(255, 255, 255, 0.3);
+}
+
+/* --- Responsive Layout --- */
+@media (max-width: 900px) {
+  .main-menu-content {
+    padding: 30px;
+  }
+  .menu-center {
+    justify-content: flex-end;
+    padding-bottom: 40px;
+  }
+  .brand-title {
+    font-size: 48px;
+  }
+  .nav-label {
+    font-size: 24px;
+  }
+}
+
+@media (max-width: 600px) {
+  .hero-img {
+    object-position: 70% center;
+  }
+  .main-menu-content {
+    padding: 20px;
+  }
+  .brand-title {
+    font-size: 40px;
+  }
+  .cinematic-nav-item {
+    padding: 12px 16px;
+  }
+}
