@@ -4,7 +4,6 @@ import { BACK_TARGET, type Screen } from '../router/routes';
 
 const COPY: Partial<Record<Screen, { title: string; icon: string; text: string }>> = {
   garage: { title: 'GARAGE', icon: '🚗', text: 'Upgrades and unlockable cars arrive in a later milestone.' },
-  leaderboard: { title: 'LEADERBOARD', icon: '🏆', text: 'The online leaderboard arrives with the backend.' },
   settings: { title: 'SETTINGS', icon: '⚙', text: 'Audio, controls and graphics options are coming soon.' },
 };
 

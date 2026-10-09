@@ -5,6 +5,7 @@ import { ResultsPage } from './ResultsPage';
 import type { RaceBridge } from '../game/bridge';
 import { useKeyPress } from '../hooks/useKeyPress';
 import { useRouter } from '../router/RouterProvider';
+import { saveCompletedRace } from '../services/backend';
 import { isRaceReady, useGameStore } from '../store/GameStore';
 
 /**
@@ -53,6 +54,21 @@ export function RacePage({ showResults = false }: { showResults?: boolean }) {
         // Replace rather than push: the race that just ended is the current
         // page, so backing out of the results should not re-enter it.
         navigate('results', { replace: true });
+
+        // Persist finished races to the backend. Best-effort and non-blocking:
+        // the results screen never waits on the network, and a failed save is
+        // logged rather than shown. Failed races are not recorded.
+        if (result.outcome === 'finished') {
+          void saveCompletedRace({
+            characterName: character.name,
+            carName: car.name,
+            trackName: track.name,
+            totalTimeMs: result.timeMs,
+            bestLapTimeMs: result.playerBestLapMs,
+            position: result.playerPosition,
+            lapsCompleted: result.lapsCompleted,
+          });
+        }
       },
     };
   }, [state.raceKey, character, car, track, mode, dispatch, navigate]);

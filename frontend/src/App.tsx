@@ -1,6 +1,7 @@
 import { CharacterSelectPage } from './pages/CharacterSelectPage';
 import { CarSelectPage } from './pages/CarSelectPage';
 import { IntroPage } from './pages/IntroPage';
+import { LeaderboardPage } from './pages/LeaderboardPage';
 import { MainMenuPage } from './pages/MainMenuPage';
 import { ModeSelectPage } from './pages/ModeSelectPage';
 import { PlaceholderPage } from './pages/PlaceholderPage';
@@ -28,7 +29,7 @@ function CurrentScreen({ screen }: { screen: Screen }) {
     case 'intro': return <IntroPage />;
     case 'menu': return <MainMenuPage />;
     case 'garage': return <GaragePage />;
-    case 'leaderboard':
+    case 'leaderboard': return <LeaderboardPage />;
     case 'settings': return <PlaceholderPage screen={screen} />;
     case 'character': return <CharacterSelectPage />;
     case 'car': return <CarSelectPage />;
