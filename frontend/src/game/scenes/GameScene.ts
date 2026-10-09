@@ -77,18 +77,23 @@ export class GameScene extends Phaser.Scene {
     this.playerCar.sync(this.session.player.physics, {});
     const cam = this.cameras.main;
     cam.setBounds(0, 0, layout.worldWidth, layout.worldHeight);
-    cam.setBackgroundColor(0x07060d);
+    const trackId = this.bridge.config.trackId;
+    
+    // Background and base ambiance
+    if (trackId === 'upside-down') cam.setBackgroundColor(0x0f0005);
+    else if (trackId === 'hawkins-forest') cam.setBackgroundColor(0x02050a);
+    else if (trackId === 'hawkins-lab') cam.setBackgroundColor(0x0a0c11);
+    else if (trackId === 'starcourt-run') cam.setBackgroundColor(0x050510);
+    else cam.setBackgroundColor(0x07060d); // hawkins-streets
 
-    // Weather Effects
-    if (this.bridge.config.trackId === 'hawkins-streets') {
-      // Generate rain texture
+    // Track-specific weather and particle effects
+    if (trackId === 'hawkins-streets') {
       const rg = this.make.graphics({x:0, y:0}, false);
       rg.fillStyle(0xaaaaff, 0.4);
       rg.fillRect(0, 0, 2, 20);
       rg.generateTexture('rain_drop', 2, 20);
       rg.destroy();
 
-      // Rain particles attached to camera
       const particles = this.add.particles(0, 0, 'rain_drop', {
         x: { min: -1000, max: 2000 },
         y: { min: -1000, max: 1500 },
@@ -102,17 +107,28 @@ export class GameScene extends Phaser.Scene {
       particles.setDepth(10);
       this.rainEmitter = particles;
 
-      // Subtle fog overlay
+      // Subtle town fog overlay
       this.add.rectangle(0, 0, layout.worldWidth, layout.worldHeight, 0x07061a, 0.2).setOrigin(0, 0).setDepth(5).setBlendMode(Phaser.BlendModes.SCREEN);
-    } else if (this.bridge.config.trackId === 'upside-down') {
-      // Generate spore texture
+      
+    } else if (trackId === 'starcourt-run') {
+      // Subtle mall neon glow overlay
+      this.add.rectangle(0, 0, layout.worldWidth, layout.worldHeight, 0x1f0033, 0.1).setOrigin(0, 0).setDepth(5).setBlendMode(Phaser.BlendModes.SCREEN);
+      
+    } else if (trackId === 'hawkins-forest') {
+      // Dense blue forest fog
+      this.add.rectangle(0, 0, layout.worldWidth, layout.worldHeight, 0x4466aa, 0.15).setOrigin(0, 0).setDepth(5).setBlendMode(Phaser.BlendModes.SCREEN);
+      
+    } else if (trackId === 'hawkins-lab') {
+      // Cold industrial atmosphere
+      this.add.rectangle(0, 0, layout.worldWidth, layout.worldHeight, 0x112233, 0.1).setOrigin(0, 0).setDepth(5).setBlendMode(Phaser.BlendModes.SCREEN);
+      
+    } else if (trackId === 'upside-down') {
       const rg = this.make.graphics({x:0, y:0}, false);
       rg.fillStyle(0xffaabb, 0.6);
       rg.fillCircle(2, 2, 2);
       rg.generateTexture('spore', 4, 4);
       rg.destroy();
 
-      // Floating spores attached to camera
       const particles = this.add.particles(0, 0, 'spore', {
         x: { min: -1000, max: 2000 },
         y: { min: -1000, max: 1500 },
@@ -125,19 +141,18 @@ export class GameScene extends Phaser.Scene {
         blendMode: 'SCREEN'
       });
       particles.setDepth(10);
-      this.rainEmitter = particles; // Reusing the rainEmitter reference to follow camera
+      this.rainEmitter = particles; 
 
       // Deep red/crimson fog overlay
       this.add.rectangle(0, 0, layout.worldWidth, layout.worldHeight, 0x1f000a, 0.25).setOrigin(0, 0).setDepth(5).setBlendMode(Phaser.BlendModes.SCREEN);
       
-      // Place Vecna in the distance relative to the player's start position
       const heading = this.session.player.physics.heading;
       const px = this.session.player.physics.x;
       const py = this.session.player.physics.y;
       const vecnaX = px + Math.cos(heading) * 600 - Math.sin(heading) * 300;
       const vecnaY = py + Math.sin(heading) * 600 + Math.cos(heading) * 300;
       this.vecna = new VecnaEntity(this, vecnaX, vecnaY);
-      this.vecna.setRotation(heading - Math.PI / 2); // Face the road
+      this.vecna.setRotation(heading - Math.PI / 2);
     }
 
     // Chase camera: pins the car to a fixed spot on screen and turns the world
