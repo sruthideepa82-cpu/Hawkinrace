@@ -39,6 +39,8 @@ export class HudScene extends Phaser.Scene {
   /** Nitro fill, resized every frame from the player's tank. */
   private nitroFill!: Phaser.GameObjects.Rectangle;
   private nitroLabel!: Phaser.GameObjects.Text;
+  private abilityFill!: Phaser.GameObjects.Rectangle;
+  private abilityLabel!: Phaser.GameObjects.Text;
   private static readonly NITRO_FULL_WIDTH = 150;
   private trackIntroOverlay!: TrackIntroOverlay;
   private hudElements: Phaser.GameObjects.GameObject[] = [];
@@ -78,11 +80,17 @@ export class HudScene extends Phaser.Scene {
     const speedUnitText = this.add.text(180, height - 60, 'km/h', { fontFamily: FONTS.display, fontSize: '24px', color: '#ffffff' }).setOrigin(0, 0.5);
 
     // Nitro panel (bottom right)
-    this.nitroLabel = this.add.text(width - 250, height - 60, 'NITRO', { fontFamily: FONTS.display, fontSize: '20px', color: '#ffffff' }).setOrigin(1, 0.5);
-    const nitroBg = this.add.rectangle(width - 40, height - 60, 200, 20, 0x000000, 0.7).setOrigin(1, 0.5).setStrokeStyle(2, 0xff2e63);
-    this.nitroFill = this.add.rectangle(width - 235, height - 60, HudScene.NITRO_FULL_WIDTH, 16, 0xff2e63, 1).setOrigin(0, 0.5);
+    this.nitroLabel = this.add.text(width - 250, height - 50, 'NITRO', { fontFamily: FONTS.display, fontSize: '20px', color: '#ffffff' }).setOrigin(1, 0.5);
+    const nitroBg = this.add.rectangle(width - 40, height - 50, 200, 20, 0x000000, 0.7).setOrigin(1, 0.5).setStrokeStyle(2, 0xff2e63);
+    this.nitroFill = this.add.rectangle(width - 235, height - 50, HudScene.NITRO_FULL_WIDTH, 16, 0xff2e63, 1).setOrigin(0, 0.5);
 
-    this.hudElements.push(speedBg, this.speedText, speedUnitText, this.nitroLabel, nitroBg, this.nitroFill);
+    // Ability panel
+    this.abilityLabel = this.add.text(width - 250, height - 85, 'VOID', { fontFamily: FONTS.display, fontSize: '20px', color: '#9a94b8' }).setOrigin(1, 0.5);
+    const abilityBg = this.add.rectangle(width - 40, height - 85, 200, 20, 0x000000, 0.7).setOrigin(1, 0.5).setStrokeStyle(2, 0x8b5cf6);
+    this.abilityFill = this.add.rectangle(width - 235, height - 85, HudScene.NITRO_FULL_WIDTH, 16, 0x8b5cf6, 1).setOrigin(0, 0.5);
+    this.abilityFill.setDisplaySize(0, 16);
+
+    this.hudElements.push(speedBg, this.speedText, speedUnitText, this.nitroLabel, nitroBg, this.nitroFill, this.abilityLabel, abilityBg, this.abilityFill);
 
     // Minimap. Everything lives in a container so the map can be rotated to
     // match the camera, which keeps the blip pointing the way the car drives.
@@ -134,7 +142,54 @@ export class HudScene extends Phaser.Scene {
     this.hudElements.forEach(el => (el as any).setAlpha(0));
 
     this.game.events.on(GAME_EVENTS.hudUpdate, this.onUpdate, this);
-    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.game.events.off(GAME_EVENTS.hudUpdate, this.onUpdate, this));
+    this.game.events.on(GAME_EVENTS.supernaturalUpdate, this.onSupernaturalUpdate, this);
+    this.game.events.on(GAME_EVENTS.supernaturalEvent, this.onSupernaturalEvent, this);
+    
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      this.game.events.off(GAME_EVENTS.hudUpdate, this.onUpdate, this);
+      this.game.events.off(GAME_EVENTS.supernaturalUpdate, this.onSupernaturalUpdate, this);
+      this.game.events.off(GAME_EVENTS.supernaturalEvent, this.onSupernaturalEvent, this);
+    });
+  }
+
+  private onSupernaturalEvent(ev: any): void {
+    if (ev.type === 'takeover_start') {
+      const { width, height } = GAME;
+      const warning = this.add.text(width / 2, height / 2 - 100, 'THE UPSIDE DOWN IS TAKING OVER', {
+        fontFamily: FONTS.display,
+        fontSize: '48px',
+        color: '#ff0000',
+        fontStyle: 'bold'
+      }).setOrigin(0.5).setAlpha(0);
+      
+      this.tweens.add({
+        targets: warning,
+        alpha: 1,
+        yoyo: true,
+        hold: 2000,
+        duration: 500,
+        onComplete: () => warning.destroy()
+      });
+    }
+  }
+
+  private onSupernaturalUpdate(data: { energy: number, max: number, active: boolean }): void {
+    const fill = Math.max(0, Math.min(1, data.energy / data.max));
+    this.abilityFill.setDisplaySize(HudScene.NITRO_FULL_WIDTH * fill, 16);
+    
+    if (data.active) {
+      this.abilityLabel.setColor('#ffffff');
+      this.abilityLabel.setText('VOID [F] ACT');
+      this.abilityFill.fillColor = 0xffffff;
+    } else if (fill >= 1) {
+      this.abilityLabel.setColor('#8b5cf6');
+      this.abilityLabel.setText('VOID [F] RDY');
+      this.abilityFill.fillColor = 0x8b5cf6;
+    } else {
+      this.abilityLabel.setColor('#9a94b8');
+      this.abilityLabel.setText('VOID');
+      this.abilityFill.fillColor = 0x8b5cf6;
+    }
   }
 
   /** Compact four-row classification, redrawn every frame from real standings. */

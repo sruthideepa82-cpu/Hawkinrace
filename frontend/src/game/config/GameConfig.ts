@@ -15,6 +15,8 @@ export const GAME_EVENTS = {
   hudUpdate: 'hud:update',
   raceFinished: 'race:finished',
   lapComplete: 'race:lapComplete',
+  supernaturalUpdate: 'race:supernaturalUpdate',
+  supernaturalEvent: 'race:supernaturalEvent',
 } as const;
 
 /**
@@ -48,6 +50,7 @@ export const CONTROLS = {
   steerLeft: ['A', 'LEFT'],
   steerRight: ['D', 'RIGHT'],
   nitro: ['SHIFT', 'SPACE'],
+  ability: ['F', 'E'],
   restart: ['R'],
   camera: ['C', 'V'],
 } as const;

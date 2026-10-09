@@ -11,7 +11,7 @@ export interface AiRival {
   aheadInRace: boolean;
 }
 
-const NO_STEER: InputState = { accelerate: false, brake: false, steer: 0, nitro: false };
+const NO_STEER: InputState = { accelerate: false, brake: false, steer: 0, nitro: false, ability: false };
 
 /**
  * Largest velocity-vs-heading slide angle (tan) we accept in a corner. See
@@ -154,6 +154,7 @@ export class AiDriver {
         brake: true,
         steer: steerOut,
         nitro: false,
+        ability: false,
       };
     }
 
@@ -265,7 +266,7 @@ export class AiDriver {
       blockedBy: blocked === null ? 0 : 1,
     });
 
-    return { accelerate: throttle || nitro, brake: braking && !nitro, steer, nitro };
+    return { accelerate: throttle || nitro, brake: braking && !nitro, steer, nitro, ability: false };
   }
 
   /** Feeds the optional debug hook, if tooling installed one. */

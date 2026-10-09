@@ -82,6 +82,7 @@ export class InputController {
       // holding both does not get a coin-flip direction.
       steer: (right ? 1 : 0) - (left ? 1 : 0),
       nitro: this.anyDown(CONTROLS.nitro),
+      ability: this.anyDown(CONTROLS.ability),
     };
   }
 

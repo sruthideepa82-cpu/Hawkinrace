@@ -194,7 +194,7 @@ export class RaceSession {
     return out;
   }
 
-  step(dt: number, playerInput: InputState): void {
+  step(dt: number, playerInput: InputState, abilityBoost: number = 1): void {
     const racing = this.race.isRacing;
 
     // The clock is shared by the whole field.
@@ -228,7 +228,9 @@ export class RaceSession {
         const wantBoost = racing && input.nitro && input.accelerate && !input.brake;
         const boost = racer.nitro.update(dt, wantBoost);
         const surface = this.layout.getSurface(racer.physics.x, racer.physics.y);
-        racer.physics.step(dt, input, surface.dragMultiplier, boost);
+        
+        const ab = racer.isPlayer ? abilityBoost : 1.0;
+        racer.physics.step(dt, input, surface.dragMultiplier, boost, ab);
       }
 
       const hit = this.layout.resolveBoundary(

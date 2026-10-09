@@ -13,6 +13,7 @@ import { RaceSession, type Racer } from '../systems/RaceSession';
 import { CHARACTERS } from '../../data/characters';
 import { CARS } from '../../data/cars';
 import { VecnaEntity } from '../entities/VecnaEntity';
+import { SupernaturalSystem } from '../systems/SupernaturalSystem';
 
 const PHYSICS_STEP = 1 / 120;
 const MAX_FRAME_SECONDS = 0.05;
@@ -33,7 +34,9 @@ export class GameScene extends Phaser.Scene {
   private previousState: string = 'countdown';
   private rainEmitter?: Phaser.GameObjects.Particles.ParticleEmitter;
   private vecna?: VecnaEntity;
+  private supernaturalSystem?: SupernaturalSystem;
   private lapTransitionMs: number = 0;
+  private fog?: Phaser.GameObjects.Rectangle;
 
   constructor() {
     super(SCENE_KEYS.game);
@@ -162,6 +165,25 @@ export class GameScene extends Phaser.Scene {
 
     // HUD lives in its own scene, layered above the world.
     if (!this.scene.isActive(SCENE_KEYS.hud)) this.scene.launch(SCENE_KEYS.hud);
+    
+    this.supernaturalSystem = new SupernaturalSystem(this, layout, this.session.player);
+    
+    this.game.events.on(GAME_EVENTS.supernaturalEvent, (ev: any) => {
+      if (ev.type === 'takeover_start') {
+        this.cameras.main.setBackgroundColor('#1a0000');
+        this.add.rectangle(0, 0, layout.worldWidth, layout.worldHeight, 0xff0000, 0.2)
+          .setOrigin(0).setDepth(4).setBlendMode(Phaser.BlendModes.MULTIPLY);
+      } else if (ev.type === 'ability_start') {
+        this.cameras.main.flash(500, 139, 92, 246);
+        this.playerCar.sprite.setTint(0x8b5cf6);
+      } else if (ev.type === 'ability_end') {
+        this.playerCar.sprite.clearTint();
+      }
+    });
+    
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      this.game.events.off(GAME_EVENTS.supernaturalEvent);
+    });
   }
 
   override update(_time: number, deltaMs: number): void {
@@ -183,8 +205,12 @@ export class GameScene extends Phaser.Scene {
     
     const isOver = this.session.race.isOver;
     if (!isOver) {
+      if (this.supernaturalSystem) {
+        this.supernaturalSystem.update(deltaMs / 1000, _time, input.ability);
+      }
       while (this.accumulator >= PHYSICS_STEP) {
-        this.session.step(PHYSICS_STEP, input);
+        const abilityBoost = this.supernaturalSystem?.abilityBoost ?? 1.0;
+        this.session.step(PHYSICS_STEP, input, abilityBoost);
         this.accumulator -= PHYSICS_STEP;
       }
     } else {

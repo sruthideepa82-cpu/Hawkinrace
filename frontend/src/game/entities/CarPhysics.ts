@@ -8,9 +8,11 @@ export interface InputState {
   steer: number;
   /** True while the driver wants the nitro boost. */
   nitro: boolean;
+  /** True when the driver activates the supernatural ability. */
+  ability: boolean;
 }
 
-export const NO_INPUT: InputState = { accelerate: false, brake: false, steer: 0, nitro: false };
+export const NO_INPUT: InputState = { accelerate: false, brake: false, steer: 0, nitro: false, ability: false };
 
 export interface CollisionResult {
   x: number;
@@ -62,8 +64,9 @@ export class CarPhysics {
   /**
    * @param dragMultiplier surface penalty (1 = road).
    * @param nitro 0..1 how hard the boost is currently applied.
+   * @param abilityBoost additional multiplier from supernatural ability.
    */
-  step(dt: number, input: InputState, dragMultiplier: number = 1, nitro: number = 0): void {
+  step(dt: number, input: InputState, dragMultiplier: number = 1, nitro: number = 0, abilityBoost: number = 1): void {
     const t = this.tuning;
 
     // 1. Steering smoothing
@@ -107,9 +110,9 @@ export class CarPhysics {
         fwd += t.brakeForce * dt; // Braking while reversing
       } else {
         // Progressive acceleration (weaker near max speed)
-        const ratio = Math.min(fwd / t.maxSpeed, 1);
+        const ratio = Math.min(fwd / (t.maxSpeed * abilityBoost), 1);
         const boost = 1 + (t.nitroAccelBoost - 1) * clamp01(nitro);
-        fwd += t.acceleration * boost * (1 - ratio * ratio * 0.8) * dt * (1 / dragMultiplier);
+        fwd += t.acceleration * boost * abilityBoost * (1 - ratio * ratio * 0.8) * dt * (1 / dragMultiplier);
       }
     } else if (input.brake) {
       // Strong intentional braking
@@ -131,7 +134,7 @@ export class CarPhysics {
     
     // Off-road affects top speed too; nitro raises the ceiling.
     const nitroSpeed = 1 + (t.nitroSpeedBoost - 1) * clamp01(nitro);
-    const effectiveMaxSpeed = (t.maxSpeed * nitroSpeed) / Math.sqrt(dragMultiplier);
+    const effectiveMaxSpeed = (t.maxSpeed * nitroSpeed * abilityBoost) / Math.sqrt(dragMultiplier);
     fwd = Math.max(-t.maxReverseSpeed, Math.min(effectiveMaxSpeed, fwd));
 
     // 5. Drift / Lateral sliding
