@@ -21,7 +21,7 @@
   width: 100%;
   height: 100%;
   object-fit: cover;
-  object-position: right center; /* Keep car in view on right side */
+  object-position: right 85%; /* Prioritize bottom for car and top for Vecna */
   animation: slow-zoom 20s ease-out both;
 }
 
@@ -30,14 +30,28 @@
   to { transform: scale(1); }
 }
 
+.hero-glass-panel {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 32%; /* Narrower to avoid covering Demogorgon */
+  background: linear-gradient(90deg, rgba(5,5,8,0.7) 0%, rgba(5,5,8,0.2) 100%);
+  backdrop-filter: blur(25px);
+  -webkit-backdrop-filter: blur(25px);
+  -webkit-mask-image: linear-gradient(90deg, black 0%, black 75%, transparent 100%);
+  mask-image: linear-gradient(90deg, black 0%, black 75%, transparent 100%);
+  z-index: 1;
+}
+
 .hero-gradient-overlay {
   position: absolute;
   inset: 0;
-  /* Dark fade from left, vignette, and a slight crimson hue on the right */
+  /* Soft fade from left for text readability, blending naturally */
   background: 
-    linear-gradient(90deg, rgba(5,5,8,1) 0%, rgba(5,5,8,0.85) 30%, rgba(5,5,8,0.2) 60%, transparent 100%),
-    radial-gradient(ellipse at center, transparent 0%, rgba(5,5,8,0.6) 100%),
-    linear-gradient(0deg, rgba(5,5,8,1) 0%, transparent 20%);
+    linear-gradient(90deg, rgba(5,5,8,0.95) 0%, rgba(5,5,8,0.4) 30%, transparent 45%),
+    linear-gradient(0deg, rgba(5,5,8,0.8) 0%, transparent 20%);
+  z-index: 2;
 }
 
 .hero-fog-overlay {
@@ -180,7 +194,7 @@
   font-family: var(--display);
   font-size: 32px;
   letter-spacing: 0.1em;
-  color: rgba(255, 255, 255, 0.6);
+  color: rgba(255, 255, 255, 0.85); /* Increased contrast */
   transition: color 0.3s ease, transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
   transform: skewX(-5deg);
 }
@@ -189,7 +203,7 @@
   width: 24px;
   height: 24px;
   margin-right: 16px;
-  color: rgba(255, 255, 255, 0.4);
+  color: rgba(255, 255, 255, 0.6); /* Increased contrast */
   transition: color 0.3s ease, transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
@@ -198,6 +212,11 @@
   background: linear-gradient(90deg, rgba(255, 23, 79, 0.1) 0%, transparent 100%);
   border-left-color: transparent;
   outline: none;
+}
+
+.cinematic-nav-item:focus-visible {
+  outline: 2px solid #FF174F;
+  outline-offset: -2px;
 }
 
 .cinematic-nav-item:hover .nav-accent-line,

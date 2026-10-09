@@ -26,7 +26,8 @@ export function MainMenuPage() {
     <div className="main-menu-layout">
       {/* Cinematic Hero Background */}
       <div className="hero-background">
-        <img src="https://images.unsplash.com/photo-1555532686-d0fccaccadcf?q=80&w=2000" alt="Cinematic Racing" className="hero-img" />
+        <img src="/assets/nitro-run-main-menu.jpg" alt="Cinematic Racing" className="hero-img" />
+        <div className="hero-glass-panel"></div>
         <div className="hero-gradient-overlay"></div>
         <div className="hero-fog-overlay"></div>
         <div className="hero-grain"></div>

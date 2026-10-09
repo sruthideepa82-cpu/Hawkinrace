@@ -1,27 +1,17 @@
 import { useMemo } from 'react';
-import { ScreenFrame } from '../components/ScreenFrame';
-import { SelectCard } from '../components/SelectCard';
-import { TrackPreview } from '../components/TrackPreview';
 import { TRACKS, type TrackInfo } from '../data/tracks';
 import { formatRaceTime } from '../game/utils/geometry';
 import { useReferenceData } from '../hooks/useReferenceData';
 import { useRouter } from '../router/RouterProvider';
 import type { BackendTrack } from '../services/api';
 import { useGameStore } from '../store/GameStore';
+import { useKeyPress } from '../hooks/useKeyPress';
+import './track-select.css';
 
 function sameName(a: string, b: string): boolean {
   return a.trim().toLowerCase() === b.trim().toLowerCase();
 }
 
-/**
- * Overlay backend track facts onto the local track definitions.
- *
- * `playable` is deliberately NOT taken from the backend `locked` flag: every
- * track is currently raceable in the frontend, and switching to DB-driven
- * locking would change what the player can pick. The backend still supplies the
- * description, difficulty, weather, environment and best time. If the backend
- * has not loaded, the local track is used unchanged.
- */
 function mergeTracks(remote: BackendTrack[] | undefined): readonly TrackInfo[] {
   if (!remote || remote.length === 0) return TRACKS;
   return TRACKS.map((local) => {
@@ -44,29 +34,103 @@ export function TrackSelectPage() {
   const { data } = useReferenceData();
   const tracks = useMemo(() => mergeTracks(data?.tracks), [data]);
 
+  const currentTrackId = state.selectedTrackId || tracks[0]?.id || 'hawkins-streets';
+  const selectedTrack = tracks.find(t => t.id === currentTrackId) || tracks[0];
+
+  useKeyPress('Escape', () => navigate('car'));
+  useKeyPress('Enter', () => {
+    if (state.selectedTrackId) navigate('mode');
+  });
+
   return (
-    <ScreenFrame
-      step={3}
-      title="CHOOSE YOUR TRACK"
-      onBack={() => navigate('car')}
-      onContinue={() => navigate('mode')}
-      continueDisabled={!state.selectedTrackId}
-    >
-      <div className="card-grid tracks">
-        {tracks.map((t) => (
-          <SelectCard key={t.id} selected={state.selectedTrackId === t.id} unavailableLabel={t.playable ? undefined : 'LOCKED'} onSelect={() => dispatch({ type: 'SELECT_TRACK', id: t.id })}>
-            <TrackPreview trackId={t.id} />
-            <h3 className="card-title">{t.name}</h3>
-            <p className="card-blurb">{t.description}</p>
-            <dl className="facts">
-              <div><dt>ENVIRONMENT</dt><dd>{t.environment}</dd></div>
-              <div><dt>DIFFICULTY</dt><dd>{t.difficulty}</dd></div>
-              <div><dt>WEATHER</dt><dd>{t.weather}</dd></div>
-              <div><dt>BEST TIME</dt><dd>{t.bestTimeMs === null ? '--:--.---' : formatRaceTime(t.bestTimeMs)}</dd></div>
-            </dl>
-          </SelectCard>
-        ))}
-      </div>
-    </ScreenFrame>
+    <div className="track-layout">
+      {/* Background Atmosphere */}
+      <div 
+        className="track-atmosphere" 
+        style={{ backgroundImage: `url(/assets/tracks/${selectedTrack.id}.png)` }}
+      ></div>
+      <div className="track-gradient-overlay"></div>
+      <div className="track-fog-overlay"></div>
+
+      <header className="track-header">
+        <div className="track-brand">HAWKINS: NITRO RUN</div>
+        <ol className="track-steps" aria-label="Progress">
+          <li className="done">DRIVER</li>
+          <li className="done">CAR</li>
+          <li className="on">TRACK</li>
+          <li>MODE</li>
+        </ol>
+        <div className="track-profile">GUEST_DRIVER_01</div>
+      </header>
+
+      <main className="track-main">
+        <div className="track-content">
+          <div className="track-info-panel" key={`info-${selectedTrack.id}`}>
+            <div className="info-label">LOCATION SELECTION</div>
+            <h1 className="info-title">CHOOSE YOUR TRACK</h1>
+            
+            <h2 className="track-name">{selectedTrack.name}</h2>
+            <p className="track-description">{selectedTrack.description}</p>
+            
+            <div className="track-stats">
+              <div className="stat-row">
+                <span className="stat-label">ENVIRONMENT</span>
+                <span className="stat-value">{selectedTrack.environment.toUpperCase()}</span>
+              </div>
+              <div className="stat-row">
+                <span className="stat-label">WEATHER</span>
+                <span className="stat-value">{selectedTrack.weather.toUpperCase()}</span>
+              </div>
+              <div className="stat-row">
+                <span className="stat-label">DIFFICULTY</span>
+                <span className="stat-value accent">{selectedTrack.difficulty.toUpperCase()}</span>
+              </div>
+              <div className="stat-row">
+                <span className="stat-label">BEST TIME</span>
+                <span className="stat-value">{selectedTrack.bestTimeMs === null ? '--:--.---' : formatRaceTime(selectedTrack.bestTimeMs)}</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="track-preview-panel">
+            <img 
+              key={`img-${selectedTrack.id}`}
+              src={`/assets/tracks/${selectedTrack.id}.png`} 
+              alt={selectedTrack.name} 
+              className="track-large-image" 
+            />
+          </div>
+        </div>
+
+        <div className="track-carousel-container">
+          <div className="track-carousel">
+            {tracks.map((t) => (
+              <button
+                key={t.id}
+                className={`track-thumbnail ${t.id === currentTrackId ? 'selected' : ''}`}
+                onClick={() => dispatch({ type: 'SELECT_TRACK', id: t.id })}
+                aria-label={`Select ${t.name}`}
+              >
+                <img src={`/assets/tracks/${t.id}.png`} alt={t.name} loading="lazy" />
+                <span className="track-thumbnail-name">{t.name}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <footer className="track-footer">
+          <button className="nav-button" onClick={() => navigate('car')}>
+            BACK
+          </button>
+          <button 
+            className="nav-button primary" 
+            onClick={() => navigate('mode')}
+            disabled={!state.selectedTrackId}
+          >
+            CONTINUE
+          </button>
+        </footer>
+      </main>
+    </div>
   );
 }
