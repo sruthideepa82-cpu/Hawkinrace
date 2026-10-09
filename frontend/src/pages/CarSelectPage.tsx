@@ -55,6 +55,7 @@ export function CarSelectPage() {
       <div className="garage-atmosphere">
         <div className="garage-light red-light"></div>
         <div className="garage-light violet-light"></div>
+        <div className="garage-floor-reflection"></div>
         <div className="garage-grain"></div>
       </div>
 
@@ -65,7 +66,7 @@ export function CarSelectPage() {
           <li className="on">CAR</li>
           <li>TRACK</li>
         </ol>
-        <div className="garage-profile">GARAGE [ 01 ]</div>
+        <div className="garage-profile">GUEST_DRIVER_01</div>
       </header>
 
       <main className="garage-main">
@@ -89,7 +90,7 @@ export function CarSelectPage() {
 
         <div className="garage-showcase-panel">
           <div className="showcase-container" key={`showcase-${selectedCar.id}`}>
-            <img src={`/cars/car-${selectedCar.id}-top.png`} alt={selectedCar.name} className="showcase-car-img" />
+            <img src={`/cars/ui-${selectedCar.id}.png`} alt={selectedCar.name} className="showcase-car-img" />
             <div className="showcase-shadow"></div>
           </div>
         </div>
@@ -102,15 +103,15 @@ export function CarSelectPage() {
             return (
               <button 
                 key={car.id} 
-                className={`carousel-item ${isSelected ? 'selected' : ''}`}
+                className={`carousel-item ${isSelected ? 'selected' : ''} ${!car.unlocked ? 'locked' : ''}`}
                 onClick={() => dispatch({ type: 'SELECT_CAR', id: car.id })}
               >
                 <div className="carousel-img-container">
-                  <img src={`/cars/car-${car.id}-top.png`} alt={car.name} />
+                  <img src={`/cars/ui-${car.id}.png`} alt={car.name} />
                 </div>
                 <div className="carousel-item-info">
                   <div className="carousel-item-name">{car.name}</div>
-                  <div className="carousel-item-class">RACING</div>
+                  <div className="carousel-item-class">{car.unlocked ? 'RACING' : 'LOCKED'}</div>
                 </div>
               </button>
             );
@@ -118,11 +119,11 @@ export function CarSelectPage() {
         </div>
 
         <footer className="garage-footer">
-          <button className="garage-btn back-btn" onClick={() => navigate('character')}>
-            <span className="arrow">&lt;</span> BACK
+          <button className="nav-button" onClick={() => navigate('character')}>
+            BACK
           </button>
           <button 
-            className="garage-btn continue-btn" 
+            className="nav-button primary" 
             onClick={() => {
               if (!state.selectedCarId) {
                 dispatch({ type: 'SELECT_CAR', id: currentCarId });
@@ -131,7 +132,7 @@ export function CarSelectPage() {
             }}
             disabled={!selectedCar.unlocked}
           >
-            CONTINUE <span className="arrow">&gt;</span>
+            CONTINUE
           </button>
         </footer>
       </div>
