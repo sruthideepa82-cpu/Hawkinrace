@@ -1,8 +1,5 @@
-import { useMemo, type CSSProperties } from 'react';
-import { ScreenFrame } from '../components/ScreenFrame';
-import { SelectCard } from '../components/SelectCard';
-import { StatBar } from '../components/StatBar';
-import { CARS, colorToCss, type Car } from '../data/cars';
+import { useMemo } from 'react';
+import { CARS, type Car } from '../data/cars';
 import { useReferenceData } from '../hooks/useReferenceData';
 import { useRouter } from '../router/RouterProvider';
 import type { BackendCar } from '../services/api';
@@ -67,7 +64,6 @@ export function CarSelectPage() {
           <li className="done">DRIVER</li>
           <li className="on">CAR</li>
           <li>TRACK</li>
-          <li>MODE</li>
         </ol>
         <div className="garage-profile">GARAGE [ 01 ]</div>
       </header>

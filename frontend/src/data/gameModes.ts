@@ -5,12 +5,14 @@ export interface GameModeInfo {
   name: string;
   description: string;
   playable: boolean;
+  label?: string;
+  imageId: string;
 }
 
 export const GAME_MODES: readonly GameModeInfo[] = [
-  { id: 'quick-race', name: 'QUICK RACE', description: 'Three laps. Best time wins.', playable: true },
-  { id: 'time-trial', name: 'TIME TRIAL', description: 'Chase your own ghost.', playable: false },
-  { id: 'survival', name: 'SURVIVAL', description: 'Last one running wins.', playable: false },
-  { id: 'nitro-rush', name: 'NITRO RUSH', description: 'Boost everywhere.', playable: false },
-  { id: 'upside-down', name: 'UPSIDE DOWN', description: 'The world flips.', playable: false },
+  { id: 'quick-race', name: 'QUICK RACE', description: 'Three laps. No distractions. Take the lead.', playable: true, label: 'RACE NOW', imageId: 'quick_race' },
+  { id: 'time-trial', name: 'TIME TRIAL', description: 'Beat the clock. Chase your perfect lap.', playable: false, imageId: 'time_trial' },
+  { id: 'survival', name: 'SURVIVAL', description: 'Stay ahead. Survive the chaos.', playable: false, imageId: 'survival' },
+  { id: 'nitro-rush', name: 'NITRO RUSH', description: 'Full boost. Maximum intensity.', playable: false, imageId: 'nitro_rush' },
+  { id: 'upside-down', name: 'UPSIDE DOWN', description: 'Enter the other side of Hawkins.', playable: false, imageId: 'upside_down' },
 ];

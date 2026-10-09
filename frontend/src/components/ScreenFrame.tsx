@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 import { useKeyPress } from '../hooks/useKeyPress';
 import { NeonButton } from './NeonButton';
 
-const STEPS = ['DRIVER', 'CAR', 'TRACK', 'MODE'] as const;
+const STEPS = ['DRIVER', 'CAR', 'TRACK'] as const;
 
 interface Props {
   title: string;

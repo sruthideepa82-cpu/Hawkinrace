@@ -1,8 +1,9 @@
+import type { ReactNode } from 'react';
 import { HashLink } from '../router/HashLink';
 import type { Screen } from '../router/routes';
 import './main-menu.css';
 
-const ITEMS: { id: string; label: string; to: Screen; icon: JSX.Element }[] = [
+const ITEMS: { id: string; label: string; to: Screen; icon: ReactNode }[] = [
   { 
     id: 'race', label: 'RACE', to: 'character',
     icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>

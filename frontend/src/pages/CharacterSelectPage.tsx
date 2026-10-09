@@ -1,7 +1,5 @@
 import type { CSSProperties } from 'react';
 import { ScreenFrame } from '../components/ScreenFrame';
-import { SelectCard } from '../components/SelectCard';
-import { StatBar } from '../components/StatBar';
 import { CHARACTERS } from '../data/characters';
 import { useRouter } from '../router/RouterProvider';
 import { useGameStore } from '../store/GameStore';

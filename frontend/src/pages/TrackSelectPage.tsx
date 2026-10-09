@@ -37,10 +37,16 @@ export function TrackSelectPage() {
   const currentTrackId = state.selectedTrackId || tracks[0]?.id || 'hawkins-streets';
   const selectedTrack = tracks.find(t => t.id === currentTrackId) || tracks[0];
 
+  const startRace = () => {
+    if (state.selectedTrackId) {
+      dispatch({ type: 'SELECT_GAME_MODE', id: 'quick-race' });
+      dispatch({ type: 'START_RACE' });
+      navigate('race');
+    }
+  };
+
   useKeyPress('Escape', () => navigate('car'));
-  useKeyPress('Enter', () => {
-    if (state.selectedTrackId) navigate('mode');
-  });
+  useKeyPress('Enter', startRace);
 
   return (
     <div className="track-layout">
@@ -58,7 +64,6 @@ export function TrackSelectPage() {
           <li className="done">DRIVER</li>
           <li className="done">CAR</li>
           <li className="on">TRACK</li>
-          <li>MODE</li>
         </ol>
         <div className="track-profile">GUEST_DRIVER_01</div>
       </header>
@@ -124,10 +129,10 @@ export function TrackSelectPage() {
           </button>
           <button 
             className="nav-button primary" 
-            onClick={() => navigate('mode')}
+            onClick={startRace}
             disabled={!state.selectedTrackId}
           >
-            CONTINUE
+            START RACE
           </button>
         </footer>
       </main>
