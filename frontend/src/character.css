@@ -1,0 +1,154 @@
+/* ---------- CHARACTER SELECTION REDESIGN ---------- */
+.character-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 24px;
+  width: 100%;
+  height: 100%;
+}
+
+.char-card {
+  --accent: #FF174F;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  background: var(--panel);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-bottom: 3px solid color-mix(in srgb, var(--accent) 40%, transparent);
+  cursor: pointer;
+  overflow: hidden;
+  text-align: left;
+  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.2s, box-shadow 0.2s;
+  padding: 0;
+}
+
+.char-card:hover {
+  transform: translateY(-8px);
+  border-color: rgba(255, 255, 255, 0.1);
+  border-bottom-color: var(--accent);
+  box-shadow: 0 15px 30px rgba(0, 0, 0, 0.5), 0 0 20px color-mix(in srgb, var(--accent) 15%, transparent);
+}
+
+.char-card.selected {
+  transform: translateY(-4px);
+  border: 1px solid var(--accent);
+  border-bottom: 4px solid var(--accent);
+  box-shadow: 0 0 30px color-mix(in srgb, var(--accent) 30%, transparent), inset 0 0 20px color-mix(in srgb, var(--accent) 10%, transparent);
+}
+
+.char-portrait-container {
+  position: relative;
+  width: 100%;
+  height: 240px;
+  background: linear-gradient(to bottom, transparent, rgba(0,0,0,0.8)), radial-gradient(circle at center, color-mix(in srgb, var(--accent) 20%, transparent) 0%, transparent 70%);
+  overflow: hidden;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+
+.char-card.selected .char-portrait-container {
+  background: linear-gradient(to bottom, transparent, rgba(0,0,0,0.9)), radial-gradient(circle at center, color-mix(in srgb, var(--accent) 40%, transparent) 0%, transparent 80%);
+}
+
+.char-portrait-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center 10%;
+  filter: drop-shadow(0 0 10px rgba(0,0,0,0.8));
+  transition: transform 0.3s ease, filter 0.3s ease;
+}
+
+.char-card:hover .char-portrait-img {
+  transform: scale(1.05);
+}
+
+.char-card.selected .char-portrait-img {
+  transform: scale(1.08);
+  filter: drop-shadow(0 0 15px var(--accent));
+}
+
+.char-portrait-overlay {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(to top, var(--panel) 0%, transparent 40%);
+  pointer-events: none;
+}
+
+.char-info {
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  background: linear-gradient(to bottom, transparent, rgba(0,0,0,0.4));
+}
+
+.char-name {
+  font-family: var(--display);
+  font-size: 38px;
+  letter-spacing: 0.1em;
+  color: #fff;
+  line-height: 1;
+  margin-bottom: 4px;
+  text-shadow: 0 2px 4px rgba(0,0,0,0.8);
+}
+
+.char-card.selected .char-name {
+  color: var(--accent);
+  text-shadow: 0 0 15px color-mix(in srgb, var(--accent) 50%, transparent);
+}
+
+.char-role {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.25em;
+  color: var(--accent);
+  margin-bottom: 12px;
+}
+
+.char-blurb {
+  font-family: var(--body);
+  font-size: 14px;
+  color: var(--muted);
+  line-height: 1.5;
+  margin-bottom: 24px;
+  min-height: 3em;
+}
+
+.char-ability-container {
+  margin-top: auto;
+  padding-top: 16px;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.char-card.selected .char-ability-container {
+  border-top-color: color-mix(in srgb, var(--accent) 30%, transparent);
+}
+
+.char-ability-label {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.2em;
+  color: rgba(255, 255, 255, 0.4);
+  margin-bottom: 6px;
+}
+
+.char-ability-name {
+  font-family: var(--display);
+  font-size: 16px;
+  letter-spacing: 0.1em;
+  color: #fff;
+}
+
+.char-card.selected .char-ability-name {
+  color: var(--accent);
+}
+
+.char-ability-desc {
+  font-family: var(--body);
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.7);
+  line-height: 1.4;
+  font-style: italic;
+}

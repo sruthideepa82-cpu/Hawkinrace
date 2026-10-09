@@ -18,11 +18,12 @@ export interface Character {
   stats: CharacterStats;
   ability: string;
   portrait?: string;
+  abilityDesc?: string;
 }
 
 export const CHARACTERS: readonly Character[] = [
-  { id: 'steve', name: 'STEVE', role: 'Balanced', blurb: 'Steady hands, no weak spots.', accent: '#cc1133', stats: { speed: 6, acceleration: 6, handling: 6, nitro: 5, awareness: 6 }, ability: 'Bat Breaker' },
-  { id: 'max', name: 'MAX', role: 'Speed / Handling', blurb: 'Fast lines, razor-sharp turns.', accent: '#ff5c8a', stats: { speed: 8, acceleration: 7, handling: 8, nitro: 4, awareness: 5 }, ability: 'Skate Boost' },
-  { id: 'mike', name: 'MIKE', role: 'Strategy', blurb: 'Plans every lap before the lights.', accent: '#9b5cff', stats: { speed: 5, acceleration: 6, handling: 6, nitro: 5, awareness: 7 }, ability: 'Party Signal' },
-  { id: 'dustin', name: 'DUSTIN', role: 'Nitro / Tech', blurb: 'Tinkers with anything that burns.', accent: '#ffb02e', stats: { speed: 5, acceleration: 9, handling: 5, nitro: 9, awareness: 6 }, ability: 'Supercharge' },
+  { id: 'will', name: 'WILL', role: 'THE CLERIC', blurb: 'Sensitive to the Upside Down. Anticipates danger before it arrives.', accent: '#11cc33', stats: { speed: 6, acceleration: 6, handling: 6, nitro: 5, awareness: 6 }, ability: 'TRUE SIGHT', abilityDesc: 'Briefly highlights shortcuts and hazards on the track.' },
+  { id: 'max', name: 'MAX', role: 'THE SKATER', blurb: 'Fast lines, razor-sharp turns.', accent: '#ff5c8a', stats: { speed: 8, acceleration: 7, handling: 8, nitro: 4, awareness: 5 }, ability: 'SKATE BOOST', abilityDesc: 'Provides a short burst of acceleration.' },
+  { id: 'mike', name: 'MIKE', role: 'THE STRATEGIST', blurb: 'Plans every lap before the lights.', accent: '#9b5cff', stats: { speed: 5, acceleration: 6, handling: 6, nitro: 5, awareness: 7 }, ability: 'PARTY SIGNAL', abilityDesc: 'Reveals nearby opponents and track information.' },
+  { id: 'dustin', name: 'DUSTIN', role: 'THE INVENTOR', blurb: 'Tinkers with anything that burns.', accent: '#ffb02e', stats: { speed: 5, acceleration: 9, handling: 5, nitro: 9, awareness: 6 }, ability: 'SUPERCHARGE', abilityDesc: 'Boosts nitro recovery for a limited duration.' },
 ];
