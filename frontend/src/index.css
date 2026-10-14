@@ -155,6 +155,7 @@ h1, h2, h3, p, dl, dd, ol { margin: 0; padding: 0; }
 .neon-btn.primary { background: linear-gradient(90deg, rgba(255, 46, 99, 0.35), rgba(155, 92, 255, 0.3)); }
 .neon-btn.ghost { border-color: rgba(155, 92, 255, 0.6); box-shadow: none; color: #cbbdff; }
 .neon-btn:hover:not(:disabled), .neon-btn:focus-visible { transform: translateY(-2px); box-shadow: 0 0 28px rgba(255, 46, 99, 0.6); outline: none; }
+.neon-btn:active:not(:disabled) { transform: translateY(0) scale(0.97); box-shadow: 0 0 18px rgba(255, 46, 99, 0.45); }
 .neon-btn:disabled { opacity: 0.35; cursor: not-allowed; box-shadow: none; }
 
 /* ---------- selection frame ---------- */
@@ -429,6 +430,410 @@ h1, h2, h3, p, dl, dd, ol { margin: 0; padding: 0; }
 .btn-secondary {
   font-size: 14px;
   padding: 10px 16px;
+}
+
+/* ---------- challenge results (failure / completion) ---------- */
+.challenge-screen {
+  position: absolute;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: clamp(12px, 3vh, 40px);
+  overflow-y: auto;
+  color: #fff;
+  font-family: var(--body);
+  background:
+    radial-gradient(circle at 50% 0%, rgba(155, 92, 255, 0.22) 0%, transparent 55%),
+    radial-gradient(circle at 50% 120%, rgba(255, 46, 99, 0.18) 0%, transparent 55%),
+    linear-gradient(180deg, #05040c 0%, #0a0a18 55%, #07060d 100%);
+  animation: challenge-fade 0.45s ease both;
+}
+@keyframes challenge-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+.challenge-panel {
+  width: min(660px, 100%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: clamp(12px, 2.2vh, 22px);
+  padding: clamp(20px, 4vh, 44px) clamp(18px, 4vw, 52px);
+  text-align: center;
+  background: rgba(10, 9, 20, 0.72);
+  border: 1px solid rgba(155, 92, 255, 0.35);
+  box-shadow: 0 0 60px rgba(155, 92, 255, 0.18), inset 0 0 40px rgba(155, 92, 255, 0.06);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  animation: challenge-rise 0.55s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+@keyframes challenge-rise {
+  from { opacity: 0; transform: translateY(16px); }
+  to { opacity: 1; transform: none; }
+}
+
+.challenge-eyebrow {
+  font-family: var(--mono);
+  font-size: 12px;
+  letter-spacing: 0.42em;
+  color: var(--purple);
+  padding-left: 0.42em;
+}
+
+.challenge-title {
+  font-family: var(--display);
+  font-size: clamp(40px, 8vw, 76px);
+  line-height: 0.95;
+  letter-spacing: 0.05em;
+  color: #fff;
+  text-shadow: 0 0 18px rgba(155, 92, 255, 0.7), 0 0 46px rgba(155, 92, 255, 0.4);
+}
+.challenge-title-win {
+  color: #fff;
+}
+
+/* Stars */
+.challenge-stars {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: clamp(10px, 3vw, 30px);
+  margin: 4px 0;
+}
+.challenge-star {
+  font-size: clamp(52px, 11vw, 96px);
+  line-height: 1;
+  color: #241f3a;
+  opacity: 0.55;
+  transform: scale(0.86);
+  transition: color 0.2s, opacity 0.2s, transform 0.2s;
+}
+.challenge-star.is-earned {
+  color: #ffd54a;
+  opacity: 1;
+  transform: scale(1);
+  text-shadow: 0 0 18px rgba(255, 213, 74, 0.85), 0 0 44px rgba(255, 179, 0, 0.5);
+  animation: challenge-star-pop 0.6s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+@keyframes challenge-star-pop {
+  0% { opacity: 0; transform: scale(0.2) rotate(-25deg); }
+  60% { opacity: 1; transform: scale(1.22) rotate(4deg); }
+  100% { opacity: 1; transform: scale(1) rotate(0deg); }
+}
+
+.challenge-message {
+  font-family: var(--display);
+  font-size: clamp(18px, 2.6vw, 26px);
+  letter-spacing: 0.1em;
+  color: #e9e2ff;
+}
+
+.challenge-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 12px;
+  width: 100%;
+  padding: 16px 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+.challenge-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  align-items: center;
+}
+.challenge-stat span {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.2em;
+  color: var(--muted);
+}
+.challenge-stat strong {
+  font-family: var(--mono);
+  font-size: clamp(15px, 2vw, 19px);
+  color: #fff;
+  font-weight: 700;
+}
+
+.challenge-order {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.challenge-order-title {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.24em;
+  color: var(--muted);
+  text-align: left;
+  margin-bottom: 6px;
+}
+.challenge-order-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 4px;
+  font-family: var(--mono);
+  font-size: 13px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+.challenge-order-row.is-player {
+  color: var(--red);
+}
+.co-pos { width: 28px; color: var(--muted); }
+.challenge-order-row.is-player .co-pos { color: var(--red); }
+.co-name { flex: 1; text-align: left; letter-spacing: 0.06em; }
+.co-time { color: var(--muted); }
+.challenge-order-row.is-player .co-time { color: var(--red); }
+
+.challenge-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 12px;
+  margin-top: 4px;
+}
+.challenge-actions .neon-btn {
+  font-size: clamp(15px, 1.8vw, 19px);
+}
+
+/* ---------- challenge failed: full-screen game-over scene ---------- */
+/* No card. The Phaser canvas stays mounted behind this and is frozen at the
+   collision, so the scene is darkened and the type sits over it. */
+.go-screen {
+  position: absolute;
+  inset: 0;
+  z-index: 50;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  align-items: flex-start;
+  padding: clamp(24px, 5vh, 60px) clamp(24px, 6vw, 96px);
+  font-family: var(--body);
+  color: #f2f0f7;
+  animation: go-fade 0.5s ease both;
+}
+@keyframes go-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* Darkening scrim: heavy on the left/bottom where the type sits, clearing on
+   the right so the wrecked car and track stay visible. */
+.go-scrim {
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(90deg, rgba(8, 9, 16, 0.94) 0%, rgba(8, 9, 16, 0.74) 34%, rgba(8, 9, 16, 0.28) 62%, rgba(8, 9, 16, 0.08) 100%),
+    linear-gradient(0deg, rgba(8, 9, 16, 0.92) 0%, rgba(8, 9, 16, 0.4) 44%, rgba(8, 9, 16, 0) 74%);
+}
+.go-vignette {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(125% 120% at 62% 42%, transparent 42%, rgba(0, 0, 0, 0.64) 100%);
+}
+/* Slow crimson light sweep across the scene. */
+.go-sweep {
+  position: absolute;
+  top: -20%;
+  left: -40%;
+  width: 80%;
+  height: 140%;
+  background: linear-gradient(100deg, transparent 42%, rgba(255, 46, 99, 0.11) 50%, transparent 58%);
+  animation: go-sweep 8s ease-in-out infinite alternate;
+}
+@keyframes go-sweep {
+  from { transform: translateX(-12%) rotate(-8deg); opacity: 0.45; }
+  to { transform: translateX(150%) rotate(-8deg); opacity: 0.9; }
+}
+
+.go-content {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: clamp(8px, 1.4vh, 14px);
+  max-width: min(660px, 100%);
+  text-align: left;
+}
+
+.go-label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  font-family: var(--mono);
+  font-size: 12px;
+  letter-spacing: 0.42em;
+  text-transform: uppercase;
+  color: #b9b4cc;
+  animation: go-rise 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation-delay: 0.05s;
+}
+.go-label-mark {
+  width: 24px;
+  height: 3px;
+  background: var(--red);
+}
+
+.go-title {
+  margin: 0;
+  font-family: var(--display);
+  font-size: clamp(64px, 12.5vw, 168px);
+  line-height: 0.84;
+  letter-spacing: -0.005em;
+  text-transform: uppercase;
+  color: #f4f2f8;
+  text-shadow: 0 8px 30px rgba(0, 0, 0, 0.65);
+  animation: go-rise 0.55s cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation-delay: 0.14s;
+}
+
+.go-sub {
+  margin: 0;
+  max-width: 46ch;
+  font-size: clamp(15px, 1.7vw, 18px);
+  line-height: 1.5;
+  color: #c4bfd6;
+  animation: go-rise 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation-delay: 0.28s;
+}
+
+.go-rule {
+  width: clamp(64px, 12vw, 120px);
+  height: 3px;
+  margin: clamp(2px, 0.8vh, 10px) 0;
+  background: linear-gradient(90deg, var(--red), rgba(255, 46, 99, 0));
+  animation: go-rise 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation-delay: 0.38s;
+}
+
+.go-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: clamp(14px, 3vw, 34px);
+  margin: 0;
+  animation: go-rise 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation-delay: 0.46s;
+}
+.go-meta-item {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.go-meta-item + .go-meta-item {
+  padding-left: clamp(14px, 3vw, 34px);
+  border-left: 1px solid rgba(155, 92, 255, 0.22);
+}
+.go-meta-item dt {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: #8f8aa6;
+}
+.go-meta-item dd {
+  margin: 0;
+  font-family: var(--mono);
+  font-size: clamp(14px, 1.6vw, 17px);
+  font-weight: 700;
+  color: #f2f0f7;
+}
+
+.go-actions {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-top: clamp(4px, 1.2vh, 14px);
+  animation: go-rise 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation-delay: 0.56s;
+}
+
+.go-btn {
+  font-family: var(--display);
+  font-size: clamp(15px, 1.7vw, 19px);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  cursor: pointer;
+  border: 1px solid transparent;
+  border-radius: 2px;
+  transition: background 0.15s, border-color 0.15s, color 0.15s, transform 0.12s, box-shadow 0.15s;
+}
+/* Primary: solid crimson, the dominant action. */
+.go-btn-primary {
+  padding: 14px 36px;
+  color: #14030b;
+  background: var(--red);
+  box-shadow: 0 12px 30px -14px rgba(255, 46, 99, 0.95);
+}
+.go-btn-primary:hover:not(:disabled),
+.go-btn-primary:focus-visible {
+  background: #ff4b78;
+  transform: translateY(-1px);
+  outline: none;
+  box-shadow: 0 16px 34px -14px rgba(255, 46, 99, 1), 0 0 0 3px rgba(255, 46, 99, 0.28);
+}
+.go-btn-primary:active:not(:disabled) {
+  background: #e61e52;
+  transform: translateY(0);
+}
+/* Secondary: quiet, minimal. */
+.go-btn-secondary {
+  padding: 14px 22px;
+  color: #cdc6e6;
+  background: transparent;
+  border-color: rgba(155, 92, 255, 0.4);
+}
+.go-btn-secondary:hover:not(:disabled),
+.go-btn-secondary:focus-visible {
+  color: #fff;
+  border-color: rgba(155, 92, 255, 0.9);
+  background: rgba(155, 92, 255, 0.12);
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(155, 92, 255, 0.18);
+}
+.go-btn-secondary:active:not(:disabled) {
+  background: rgba(155, 92, 255, 0.2);
+}
+
+@media (max-width: 640px) {
+  .go-screen {
+    padding: 24px 20px calc(24px + env(safe-area-inset-bottom, 0px));
+  }
+  /* Narrow screens: the car sits to the right, so the scrim has to carry the
+     bottom band the type sits in. */
+  .go-scrim {
+    background:
+      linear-gradient(0deg, rgba(8, 9, 16, 0.96) 0%, rgba(8, 9, 16, 0.86) 46%, rgba(8, 9, 16, 0.42) 76%, rgba(8, 9, 16, 0.14) 100%);
+  }
+  .go-content {
+    max-width: 100%;
+  }
+  .go-title {
+    font-size: clamp(56px, 19vw, 104px);
+  }
+  .go-actions {
+    flex-direction: column;
+    align-items: stretch;
+    width: 100%;
+  }
+  .go-btn {
+    width: 100%;
+    text-align: center;
+  }
+}
+
+@media (max-width: 520px) {
+  .challenge-panel { gap: 12px; }
+  .challenge-actions { flex-direction: column; width: 100%; }
+  .challenge-actions .neon-btn { width: 100%; }
 }
 
 @media (max-width: 640px) {

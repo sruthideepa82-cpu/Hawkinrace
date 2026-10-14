@@ -14,7 +14,6 @@ export const SCENE_KEYS = {
 export const GAME_EVENTS = {
   hudUpdate: 'hud:update',
   raceFinished: 'race:finished',
-  lapComplete: 'race:lapComplete',
   supernaturalUpdate: 'race:supernaturalUpdate',
   supernaturalEvent: 'race:supernaturalEvent',
 } as const;
@@ -114,6 +113,61 @@ export const CAR_STATS = {
 export const RACE = {
   totalLaps: 3,
   countdownSeconds: 3,
+} as const;
+
+/**
+ * Car-to-car collision. The extents match the visible top-down sprite, which
+ * `CarView` scales to 84px wide (half-length 42). Those sprites are about 0.454
+ * as tall as they are wide, so the car is roughly 38px across (half-width 19).
+ * A single pair of numbers is used for every car: the four chassis sprites are
+ * within a few percent of each other, and keeping one box means the hitbox is
+ * always the same as the thing drawn on screen.
+ */
+export const COLLISION = {
+  /** Half the car's length, along its heading. */
+  halfLength: 42,
+  /** Half the car's width, across its heading. */
+  halfWidth: 19,
+  /**
+   * Penetration (px) required before an overlap counts as a confirmed contact.
+   * Cars are pushed apart to exactly touching each step, so a resting pair reads
+   * as zero overlap. This filters out the sub-pixel tangential rub that AI lane
+   * wander produces -- a real hit, where one car drives into another, buries
+   * several pixels deep in a single step.
+   */
+  contactEpsilon: 1.5,
+  /**
+   * Closing speed (px/s) that also confirms a contact, for a fast sideswipe
+   * that never gets deep. Below both this and `contactEpsilon` the two cars are
+   * merely brushing, which must not end the challenge.
+   */
+  contactSpeed: 160,
+  /** Closing speed (px/s) that reads as a full-severity head-on hit. */
+  severeSpeed: 360,
+  /** Bounce returned on the gentlest touch. */
+  minRestitution: 0.05,
+  /** Bounce returned at full severity. */
+  maxRestitution: 0.35,
+  /** Fraction of speed scrubbed off at full severity. */
+  maxSpeedLoss: 0.35,
+} as const;
+
+/**
+ * Challenge scoring thresholds, in milliseconds for the whole race.
+ *
+ * Deliberately global rather than per-track: no track carries its own target
+ * time, and inventing per-track rules would make identical driving earn a
+ * different star rating for no stated reason. Tune the two numbers here.
+ */
+export const CHALLENGE = {
+  /**
+   * 3 stars: finish the required laps at or under this time. The reference AI
+   * driver laps the five tracks in roughly 63-105s, so this rewards driving at
+   * or near its pace.
+   */
+  targetTimeMs: 100_000,
+  /** 2 stars: finish at or under this time. Slower still earns 1 star. */
+  acceptableTimeMs: 140_000,
 } as const;
 
 export const CAMERA = {

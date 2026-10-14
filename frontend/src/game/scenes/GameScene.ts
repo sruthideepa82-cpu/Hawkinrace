@@ -6,6 +6,7 @@ import { buildGrid } from '../config/racers';
 import { CameraRig } from '../entities/CameraRig';
 import { PlayerCar } from '../entities/PlayerCar';
 import { AiCarView } from '../entities/CarView';
+import { ensureParticleTexture } from '../entities/carTexture';
 import { TrackLayout } from '../entities/TrackLayout';
 import { TrackRenderer } from '../entities/TrackRenderer';
 import { InputController } from '../systems/InputController';
@@ -21,6 +22,9 @@ const MAX_FRAME_SECONDS = 0.05;
 const RESULT_HANDOFF_DELAY_MS = 1800;
 /** Shorter, because a failure is a stop rather than a finish to celebrate. */
 const FAILURE_HANDOFF_DELAY_MS = 1100;
+/** Short, non-cinematic jolt on contact, played before the failure screen. */
+const IMPACT_SHAKE_MS = 260;
+const IMPACT_SHAKE_INTENSITY = 0.008;
 
 export class GameScene extends Phaser.Scene {
   private bridge!: RaceBridge;
@@ -35,8 +39,6 @@ export class GameScene extends Phaser.Scene {
   private rainEmitter?: Phaser.GameObjects.Particles.ParticleEmitter;
   private vecna?: VecnaEntity;
   private supernaturalSystem?: SupernaturalSystem;
-  private lapTransitionMs: number = 0;
-  private fog?: Phaser.GameObjects.Rectangle;
 
   constructor() {
     super(SCENE_KEYS.game);
@@ -55,7 +57,6 @@ export class GameScene extends Phaser.Scene {
     this.resultReported = false;
     this.accumulator = 0;
     this.previousState = 'countdown';
-    this.lapTransitionMs = 0;
     this.aiViews.clear();
 
     const layout = new TrackLayout(getTrackDefinition(this.bridge.config.trackId));
@@ -191,13 +192,7 @@ export class GameScene extends Phaser.Scene {
       this.scene.restart();
       return;
     }
-    
-    // Lap completion slow motion effect
-    if (this.lapTransitionMs > 0) {
-      this.lapTransitionMs -= deltaMs;
-      deltaMs *= 0.1;
-    }
-    
+
     if (this.inputController.cameraPressed()) this.cameraRig.cycle();
 
     this.accumulator += Math.min(deltaMs / 1000, MAX_FRAME_SECONDS);
@@ -217,25 +212,14 @@ export class GameScene extends Phaser.Scene {
       this.accumulator = 0;
     }
 
+    // A confirmed player-opponent contact fails the challenge inside the step.
+    // Play the impact here, before the failure handoff, so the screen shake
+    // reads as the cause rather than an effect that appears out of nowhere.
+    const impact = this.session.consumePlayerCollision();
+    if (impact) this.playImpactEffect(impact.impact);
+
     // 1. Player view: full effects.
     const player = this.session.player;
-    
-    // Trigger lap completion overlay
-    if (player.lastLapEvent === 'lap') {
-      const lapData = player.laps.snapshot();
-      const lapTimeMs = lapData.lapTimesMs[lapData.lapTimesMs.length - 1] ?? 0;
-      const completedLap = lapData.lap - 1;
-      
-      this.game.events.emit(GAME_EVENTS.lapComplete, {
-        lap: completedLap,
-        lapTimeMs,
-        position: this.session.playerPosition(),
-        totalRacers: this.session.racers.length,
-        lapsRemaining: lapData.totalLaps - completedLap
-      });
-      
-      this.lapTransitionMs = 2000;
-    }
 
     const speed = player.physics.speed;
     const racing = this.session.race.isRacing;
@@ -306,13 +290,90 @@ export class GameScene extends Phaser.Scene {
   }
 
   /**
+   * A short jolt for a confirmed collision. Deliberately restrained: the point
+   * is to register the hit, not to be a set piece. A heavier impact shakes a
+   * little harder, but the range stays small. The crash debris that follows is
+   * part of the same moment, so the frozen scene reads as "just crashed".
+   */
+  private playImpactEffect(impact: number): void {
+    const severity = Math.min(1, impact / 360);
+    this.cameras.main.shake(IMPACT_SHAKE_MS, IMPACT_SHAKE_INTENSITY * (0.6 + 0.4 * severity));
+    this.cameras.main.flash(160, 150, 20, 40, false);
+    this.spawnCrashDebris(severity);
+  }
+
+  /**
+   * One-shot crash debris at the player's car: smoke, sparks and a pair of red
+   * tail-light glows. Reuses the shared particle dot and the car's own heading
+   * rather than drawing anything new, so the frozen sprite at the collision
+   * point is still the car the player was driving.
+   *
+   * Everything here is cosmetic and self-destroying; it never touches race
+   * state, the clock, or the car's physics.
+   */
+  private spawnCrashDebris(severity: number): void {
+    ensureParticleTexture(this);
+    const { x, y, heading } = this.session.player.physics;
+    const cos = Math.cos(heading);
+    const sin = Math.sin(heading);
+
+    const smoke = this.add
+      .particles(x, y, 'particle-dot', {
+        speed: { min: 8, max: 50 },
+        angle: { min: 0, max: 360 },
+        scale: { start: 0.5, end: 2.6 },
+        alpha: { start: 0.45, end: 0 },
+        tint: 0x9a96a8,
+        lifespan: { min: 900, max: 1500 },
+        quantity: 12,
+        emitting: false,
+      })
+      .setDepth(12);
+    smoke.explode(12);
+    this.time.delayedCall(1700, () => smoke.destroy());
+
+    const sparks = this.add
+      .particles(x, y, 'particle-dot', {
+        speed: { min: 80, max: 260 * (0.6 + 0.4 * severity) },
+        angle: { min: 0, max: 360 },
+        scale: { start: 0.55, end: 0 },
+        alpha: { start: 0.9, end: 0 },
+        tint: 0xff6a3a,
+        lifespan: { min: 300, max: 650 },
+        quantity: 16,
+        blendMode: 'ADD',
+        emitting: false,
+      })
+      .setDepth(12);
+    sparks.explode(16);
+    this.time.delayedCall(900, () => sparks.destroy());
+
+    // Tail-light glows left burning at the rear corners, matching the brake
+    // lights CarView draws, so the parked car still reads as "crashed".
+    const rearX = x - cos * 15;
+    const rearY = y - sin * 15;
+    for (const side of [-1, 1]) {
+      const glow = this.add
+        .image(rearX - sin * 8 * side, rearY + cos * 8 * side, 'particle-dot')
+        .setDepth(11)
+        .setTint(0xff2e3a)
+        .setBlendMode(Phaser.BlendModes.ADD)
+        .setScale(4)
+        .setAlpha(0);
+      this.tweens.add({ targets: glow, alpha: 0.7, duration: 220, delay: 60 });
+    }
+  }
+
+  /**
    * Called once the race is over for any reason -- the player taking the
-   * chequered flag, or every AI car finishing with the player still on track.
+   * chequered flag, a confirmed collision, or every AI car finishing with the
+   * player still on track.
    *
    * The session is the single authority on whether that moment has arrived; this
-   * just reacts to the state changing. A failed race uses a shorter handoff so
-   * the "YOU FAILED" moment does not drag, and carries `outcome` through so the
-   * results screen can tell a failure from a completed race.
+   * just reacts to the state changing, exactly once. A failed race uses a
+   * shorter handoff so the failure screen follows the impact promptly, and
+   * carries the outcome through so the results screen can tell a failure from a
+   * completed race.
    */
   private finishRace(): void {
     if (this.resultReported) return;

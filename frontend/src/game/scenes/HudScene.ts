@@ -3,7 +3,6 @@ import { getRaceBridge } from '../bridge';
 import { FONTS, GAME, GAME_EVENTS, SCENE_KEYS } from '../config/GameConfig';
 import type { HudPayload } from '../systems/RaceSession';
 import { formatRaceTime } from '../utils/geometry';
-import { LapTransitionOverlay } from './LapTransitionOverlay';
 import { TrackIntroOverlay } from './TrackIntroOverlay';
 
 import { getTrackDefinition } from '../config/tracks';
@@ -45,6 +44,8 @@ export class HudScene extends Phaser.Scene {
   private trackIntroOverlay!: TrackIntroOverlay;
   private hudElements: Phaser.GameObjects.GameObject[] = [];
   private hudVisible = false;
+  /** Last lap shown, so the counter only animates when the lap actually rises. */
+  private lastLap = 1;
 
   constructor() {
     super(SCENE_KEYS.hud);
@@ -61,8 +62,8 @@ export class HudScene extends Phaser.Scene {
     const topBarLine = this.add.rectangle(0, 64, width, 1, 0x333333, 1).setOrigin(0, 0);
 
     // Position and lap sit side by side on the left of the top bar.
-    this.posText = this.add.text(40, 32, 'POS 1/4', { fontFamily: FONTS.display, fontSize: '28px', color: RED }).setOrigin(0, 0.5);
-    this.lapText = this.add.text(150, 32, 'LAP 1/3', { fontFamily: FONTS.display, fontSize: '28px', color: '#ffffff' }).setOrigin(0, 0.5);
+    this.posText = this.add.text(40, 32, 'P1 / 4', { fontFamily: FONTS.display, fontSize: '28px', color: RED }).setOrigin(0, 0.5);
+    this.lapText = this.add.text(170, 32, 'LAP 1 / 3', { fontFamily: FONTS.display, fontSize: '28px', color: '#ffffff' }).setOrigin(0, 0.5);
     this.timeText = this.add.text(width - 40, 32, 'TIME 00:00.000', { fontFamily: FONTS.mono, fontSize: '24px', color: '#ffffff' }).setOrigin(1, 0.5);
 
     // Driver / car label
@@ -135,7 +136,6 @@ export class HudScene extends Phaser.Scene {
     this.bannerTime = this.add.text(0, 40, '', { fontFamily: FONTS.mono, fontSize: '32px', color: '#ffffff' }).setOrigin(0.5);
     this.banner = this.add.container(width / 2, height / 2, [this.bannerTitle, this.bannerTime]).setVisible(false);
 
-    new LapTransitionOverlay(this);
     this.trackIntroOverlay = new TrackIntroOverlay(this, this.bridge);
 
     // Hide HUD initially
@@ -232,8 +232,15 @@ export class HudScene extends Phaser.Scene {
       });
     }
 
-    this.posText.setText(`POS ${data.playerPosition}/${data.standings.length}`);
-    this.lapText.setText(`LAP ${data.playerLap}/${data.totalLaps}`);
+    // A lap banked gets a brief pulse on the counter itself rather than a
+    // full-screen notification, and the race never pauses for it.
+    if (data.state === 'racing' && data.playerLap > this.lastLap) {
+      this.animateLapChange();
+    }
+    this.lastLap = data.playerLap;
+
+    this.posText.setText(`P${data.playerPosition} / ${data.standings.length}`);
+    this.lapText.setText(`LAP ${data.playerLap} / ${data.totalLaps}`);
     this.timeText.setText(`TIME ${formatRaceTime(data.finalTimeMs ?? data.elapsedMs)}`);
     this.speedText.setText(`${String(data.speedKmh).padStart(3, '0')}`);
 
@@ -280,6 +287,22 @@ export class HudScene extends Phaser.Scene {
     // We no longer show the giant banner in Phaser.
     // The React overlay handles the "RACE COMPLETE" and "YOU FAILED" screens!
     this.banner.setVisible(false);
+  }
+
+  /**
+   * Brief highlight on the lap counter when a lap is completed. Scale-pulse and
+   * a colour flash only; it never blocks input or pauses the race.
+   */
+  private animateLapChange(): void {
+    this.tweens.killTweensOf(this.lapText);
+    this.lapText.setScale(1).setColor('#ff5c8a');
+    this.tweens.add({
+      targets: this.lapText,
+      scale: { from: 1.35, to: 1 },
+      duration: 420,
+      ease: 'Back.easeOut',
+    });
+    this.time.delayedCall(480, () => this.lapText.setColor('#ffffff'));
   }
 
   private updateLeaderboard(standings: readonly StandingEntry[]): void {

@@ -3,7 +3,7 @@ import Phaser from 'phaser';
 /**
  * Returns the key for the loaded car texture.
  */
-export function ensureCarTexture(scene: Phaser.Scene, carId: string, color: number): string {
+export function ensureCarTexture(scene: Phaser.Scene, carId: string, _color: number): string {
   const key = `car-${carId}`;
   if (scene.textures.exists(key)) return key;
   // Fallback to first car if somehow missing

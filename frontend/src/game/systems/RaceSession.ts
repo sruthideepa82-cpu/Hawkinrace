@@ -2,10 +2,12 @@ import type { Point } from '../config/tracks';
 import type { RaceResult, StandingEntry } from '../bridge';
 import { createRacerTuning, type CarTuning } from '../config/carTuning';
 import { AI_STAT_WEIGHT, getAiProfile, type RacerConfig } from '../config/racers';
-import { RACE, CAR } from '../config/GameConfig';
+import { RACE, CAR, COLLISION } from '../config/GameConfig';
 import { CarPhysics, NO_INPUT, type InputState } from '../entities/CarPhysics';
 import type { TrackLayout } from '../entities/TrackLayout';
 import { AiDriver, type AiRival } from './AiDriver';
+import { boxContact } from './CarCollision';
+import { starsForTime } from './Challenge';
 import { LapManager } from './LapManager';
 import { NitroTank } from './NitroTank';
 import { RaceManager, type RaceSnapshot } from './RaceManager';
@@ -129,18 +131,37 @@ const CAR_HALF_WIDTH = CAR.height / 2 + CAR.footprintPadding;
  * and car-to-car collisions, feeds each car through the shared lap/checkpoint
  * logic, and ranks the field. Phaser-free so it stays easy to reason about.
  */
+export interface RaceSessionOptions {
+  /**
+   * When false, a player-opponent contact is still resolved physically but does
+   * not fail the challenge. The game always leaves this on; tooling uses it to
+   * study pure race physics without the challenge rule ending the run early.
+   */
+  collisionFailsChallenge?: boolean;
+}
+
 export class RaceSession {
   readonly race: RaceManager;
   readonly racers: Racer[];
   readonly player: Racer;
   readonly positionManager: RacePositionManager;
+  /** See `RaceSessionOptions`. On in the game. */
+  private readonly collisionFailsChallenge: boolean;
+  /**
+   * Set on the frame the player's collision box overlaps a live opponent's.
+   * `resolveOutcome` turns it into a failure; GameScene reads it once (and
+   * clears it) to play the impact effect. Never set once the race is terminal.
+   */
+  private playerContact: { depth: number; impact: number } | null = null;
 
   constructor(
     readonly layout: TrackLayout,
     configs: readonly RacerConfig[],
     driverFor?: (config: RacerConfig, tuning: CarTuning) => AiDriver | null,
+    options: RaceSessionOptions = {},
   ) {
     const isUpsideDown = layout.definition.id === 'upside-down';
+    this.collisionFailsChallenge = options.collisionFailsChallenge ?? true;
     this.race = new RaceManager(RACE.countdownSeconds, isUpsideDown ? 5.5 : 3.5);
     this.racers = configs.map((c) => new Racer(c, layout, driverFor));
 
@@ -302,12 +323,20 @@ export class RaceSession {
    * actually finished) nor early.
    */
   private resolveOutcome(): void {
+    // A confirmed collision ends the challenge first, even on the frame the
+    // player would also have taken the flag. The rule is absolute: a collision
+    // must never resolve into a completed run, so the completion screen can
+    // never appear for a race that was failed.
+    if (this.playerContact) {
+      this.race.fail('collision');
+      return;
+    }
     if (this.player.finished) {
       this.race.finish();
       return;
     }
     if (this.aiFinishedCount() >= this.aiCount) {
-      this.race.fail();
+      this.race.fail('outrun');
     }
   }
 
@@ -343,35 +372,43 @@ export class RaceSession {
   }
 
   /**
-   * Pushes overlapping cars apart along the line between them. Restitution is
-   * deliberately low so contact nudges cars aside rather than launching them.
-   * A car that has already finished never blocks a racing car.
+   * Resolves overlapping cars using each car's real oriented footprint, so the
+   * hitbox matches the sprite and cars cannot drive through one another.
+   *
+   * Every pair is separated along its minimum-overlap normal and given a
+   * velocity response along that normal. The response scales with how fast the
+   * two cars were closing: a light rub just nudges them apart, while a head-on
+   * hit bounces and scrubs a noticeable amount of speed. A car that has already
+   * finished never blocks a car that is still racing.
    *
    * Resolved over a few passes: with four cars a single pass leaves them
    * overlapped, because pushing one pair apart can shove a car into a third that
    * the same pass has already walked past.
    */
   private separateCars(): void {
-    const minDist = CAR.collisionRadius * 2;
-    const minDist2 = minDist * minDist;
+    const { halfLength, halfWidth } = COLLISION;
 
     for (let pass = 0; pass < SEPARATION_PASSES; pass++) {
       for (let i = 0; i < this.racers.length; i++) {
         for (let j = i + 1; j < this.racers.length; j++) {
-        const a = this.racers[i].physics;
-          const b = this.racers[j].physics;
-          const dx = b.x - a.x;
-          const dy = b.y - a.y;
-          const d2 = dx * dx + dy * dy;
-          if (d2 >= minDist2 || d2 === 0) continue;
+          const ra = this.racers[i];
+          const rb = this.racers[j];
+          const a = ra.physics;
+          const b = rb.physics;
 
-          const d = Math.sqrt(d2);
-          const nx = dx / d;
-          const ny = dy / d;
-          const overlap = minDist - d;
+          const contact = boxContact(
+            { x: a.x, y: a.y, heading: a.heading, halfLength, halfWidth },
+            { x: b.x, y: b.y, heading: b.heading, halfLength, halfWidth },
+          );
+          if (!contact) continue;
 
-          const aDone = this.racers[i].finished;
-          const bDone = this.racers[j].finished;
+          // Only the first pass sees the true penetration, before any correction
+          // has moved the cars; later passes are settling, not new impacts.
+          if (pass === 0) this.notePlayerContact(ra, rb, contact);
+
+          const { nx, ny, depth } = contact;
+          const aDone = ra.finished;
+          const bDone = rb.finished;
 
           // A finished car never blocks a car that is still racing: with exactly
           // one live car it absorbs none of the displacement, so the live car
@@ -382,23 +419,81 @@ export class RaceSession {
           const aShare = bDone && !aDone ? 1 : aDone && !bDone ? 0 : 0.5;
           const bShare = aDone && !bDone ? 1 : bDone && !aDone ? 0 : 0.5;
 
-          a.x -= nx * overlap * aShare;
-          a.y -= ny * overlap * aShare;
-          b.x += nx * overlap * bShare;
-          b.y += ny * overlap * bShare;
+          a.x -= nx * depth * aShare;
+          a.y -= ny * depth * aShare;
+          b.x += nx * depth * bShare;
+          b.y += ny * depth * bShare;
 
-          // Exchange a little speed along the contact normal (restitution ~0.25).
+          // Velocity response, scaled by how hard the cars are closing. The
+          // relative speed along the normal is negative while they approach.
           const relative = (b.vx - a.vx) * nx + (b.vy - a.vy) * ny;
-          if (relative < 0) {
-            const impulse = -relative * 0.6;
-            a.vx -= nx * impulse * aShare;
-            a.vy -= ny * impulse * aShare;
-            b.vx += nx * impulse * bShare;
-            b.vy += ny * impulse * bShare;
-          }
+          if (relative >= 0) continue;
+
+          const severity = Math.min(1, -relative / COLLISION.severeSpeed);
+          const restitution =
+            COLLISION.minRestitution + (COLLISION.maxRestitution - COLLISION.minRestitution) * severity;
+          const impulse = (-relative * (1 + restitution)) / 2;
+          a.vx -= nx * impulse * aShare;
+          a.vy -= ny * impulse * aShare;
+          b.vx += nx * impulse * bShare;
+          b.vy += ny * impulse * bShare;
+
+          // Both cars lose speed, more so on a hard hit. This is what makes a
+          // scrape feel different from a head-on: severity is the closing speed.
+          const scrub = 1 - COLLISION.maxSpeedLoss * severity;
+          a.vx *= scrub;
+          a.vy *= scrub;
+          b.vx *= scrub;
+          b.vy *= scrub;
         }
       }
     }
+  }
+
+  /**
+   * Records a confirmed player-opponent contact, which fails the challenge.
+   *
+   * `boxContact` returns null for merely being close, so a hit needs a real
+   * overlap -- but a sub-pixel tangential rub, the kind AI lane wander produces,
+   * is not a collision and is filtered by `contactEpsilon` / `contactSpeed`.
+   * Only a live race counts, and only an opponent that is still racing: a car
+   * that has already taken the flag is coasting and parked on the track, and
+   * failing the player for touching it would punish them for a car they cannot
+   * avoid.
+   */
+  private notePlayerContact(ra: Racer, rb: Racer, contact: { nx: number; ny: number; depth: number }): void {
+    if (!this.collisionFailsChallenge) return;
+    if (!this.race.isRacing) return;
+
+    const player = ra.isPlayer ? ra : rb.isPlayer ? rb : null;
+    if (!player) return;
+    const other = player === ra ? rb : ra;
+    if (other.finished) return;
+
+    const impact = Math.max(
+      0,
+      -((other.physics.vx - player.physics.vx) * contact.nx +
+        (other.physics.vy - player.physics.vy) * contact.ny),
+    );
+
+    // A contact is confirmed when the cars are genuinely overlapping, or when
+    // they met at speed. A sub-pixel tangential rub is neither: it is proximity,
+    // not a collision, and must not end the challenge.
+    if (contact.depth < COLLISION.contactEpsilon && impact < COLLISION.contactSpeed) return;
+
+    // Keep the worst contact of the step, in case several pairs are resolved.
+    if (this.playerContact && this.playerContact.depth >= contact.depth) return;
+    this.playerContact = { depth: contact.depth, impact };
+  }
+
+  /**
+   * Returns (and clears) the player-opponent contact recorded this step, so the
+   * scene can play a one-shot impact effect. Null when there was none.
+   */
+  consumePlayerCollision(): { depth: number; impact: number } | null {
+    const contact = this.playerContact;
+    this.playerContact = null;
+    return contact;
   }
 
   /** Live ranking. Finished cars hold their finish slot; the rest sort on progress. */
@@ -441,11 +536,18 @@ export class RaceSession {
     const snap = this.race.snapshot();
     const board = this.standings();
     const me = this.racers.find((r) => r.isPlayer) ?? this.racers[0];
+    const outcome = this.race.isFailed ? 'failed' : 'finished';
+    const failureReason = this.race.isFailed ? (this.race.failureReason ?? 'outrun') : null;
+    // On a failure the player never took the flag, so the elapsed clock is
+    // what they are being shown as having been beaten in.
+    const timeMs = me.laps.finishTimeMs ?? snap.elapsedMs;
     return {
-      outcome: this.race.isFailed ? 'failed' : 'finished',
-      // On a failure the player never took the flag, so the elapsed clock is
-      // what they are being shown as having been beaten in.
-      timeMs: me.laps.finishTimeMs ?? snap.elapsedMs,
+      outcome,
+      failureReason,
+      // A completed run always crossed every lap without a collision, so its
+      // time alone decides the stars. Failures never earn any.
+      stars: outcome === 'finished' ? starsForTime(timeMs) : 0,
+      timeMs,
       lapTimesMs: [...me.laps.lapTimesMs],
       lapsCompleted: me.laps.snapshot().lap,
       totalLaps: RACE.totalLaps,
@@ -458,6 +560,7 @@ export class RaceSession {
 
   /** Full reset for the retry path. */
   reset(): void {
+    this.playerContact = null;
     for (const racer of this.racers) {
       racer.finishPosition = null;
       racer.justFinished = false;

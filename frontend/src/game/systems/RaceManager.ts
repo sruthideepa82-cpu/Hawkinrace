@@ -8,6 +8,20 @@ import { Timer } from './Timer';
 
 export type RaceState = 'intro' | 'countdown' | 'racing' | 'finished' | 'failed';
 
+/**
+ * The race's public phase, as required by the challenge state machine.
+ *
+ * `intro` and `countdown` are both still the run being prepared, so they share
+ * `READY`; the internal `RaceState` keeps them distinct because the HUD draws a
+ * different thing for each. `FAILED` and `COMPLETED` are terminal: once the race
+ * reaches one, nothing may move it, and no timer, lap or collision update may
+ * change the result.
+ */
+export type RacePhase = 'READY' | 'RACING' | 'FAILED' | 'COMPLETED';
+
+/** Why the race ended in `FAILED`. See `RaceResult.failureReason`. */
+export type RaceFailureReason = 'collision' | 'outrun';
+
 export interface RaceSnapshot {
   state: RaceState;
   elapsedMs: number;
@@ -28,6 +42,7 @@ export class RaceManager {
   private introRemainingMs: number;
   private countdownRemainingMs: number;
   private finalTimeMs: number | null = null;
+  private failReason: RaceFailureReason | null = null;
 
   constructor(private readonly countdownSeconds: number, private readonly introSeconds: number = 3.5) {
     this.introRemainingMs = introSeconds * 1000;
@@ -41,6 +56,7 @@ export class RaceManager {
     this.introRemainingMs = this.introSeconds * 1000;
     this.countdownRemainingMs = this.countdownSeconds * 1000;
     this.finalTimeMs = null;
+    this.failReason = null;
   }
 
   get isRacing(): boolean {
@@ -69,12 +85,40 @@ export class RaceManager {
     return this.state;
   }
 
+  /** The public state machine phase: READY / RACING / FAILED / COMPLETED. */
+  get phase(): RacePhase {
+    switch (this.state) {
+      case 'intro':
+      case 'countdown':
+        return 'READY';
+      case 'racing':
+        return 'RACING';
+      case 'failed':
+        return 'FAILED';
+      case 'finished':
+        return 'COMPLETED';
+    }
+  }
+
+  /** True once the race can no longer change: FAILED or COMPLETED. */
+  get isTerminal(): boolean {
+    return this.isOver;
+  }
+
+  /** Why the race failed, or null while racing / on a completion. */
+  get failureReason(): RaceFailureReason | null {
+    return this.failReason;
+  }
+
   get elapsed(): number {
     return this.timer.elapsed;
   }
 
   /** Advances the clock. Returns true on the frame the countdown releases. */
   update(dtMs: number): void {
+    // Terminal states are frozen: the clock must not keep running after a
+    // failure or a finish, so results never drift.
+    if (this.isOver) return;
     if (this.state === 'intro') {
       this.introRemainingMs -= dtMs;
       if (this.introRemainingMs <= 0) {
@@ -104,21 +148,23 @@ export class RaceManager {
   finish(): void {
     if (this.isOver) return;
     this.state = 'finished';
+    this.failReason = null;
     this.finalTimeMs = this.timer.elapsed;
   }
 
   /**
-   * Called the moment the last AI car finishes with the player still racing.
+   * Ends the race in failure. Guarded so a terminal state can never be
+   * overwritten -- in particular a completion on the same frame as a collision
+   * stays whatever was applied first, and `resolveOutcome` deliberately applies
+   * the collision first.
    *
-   * This is driven by the real finishing state, not by a timer: the caller
-   * passes what actually happened on track, so there is no window in which the
-   * player can be failed while they are actually ahead, and no race that fails
-   * early. The player cannot then finish, because lap counting is gated on
-   * `isRacing` and that is now false.
+   * `reason` distinguishes the challenge rule (a player-opponent collision) from
+   * the original race rule (every AI finishing first).
    */
-  fail(): void {
+  fail(reason: RaceFailureReason = 'outrun'): void {
     if (this.isOver) return;
     this.state = 'failed';
+    this.failReason = reason;
     this.finalTimeMs = this.timer.elapsed;
   }
 

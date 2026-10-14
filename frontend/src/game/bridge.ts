@@ -52,8 +52,25 @@ export interface StandingEntry {
  */
 export type RaceOutcome = 'finished' | 'failed';
 
+/**
+ * Why a challenge ended in failure.
+ *
+ * `collision` is the challenge rule: the player's car touched an opponent.
+ * `outrun` is the original race rule: every AI car finished while the player
+ * was still out on track. The results screen shows a different reason line for
+ * each, but both are terminal and neither can turn into a completion.
+ */
+export type RaceFailureReason = 'collision' | 'outrun';
+
 export interface RaceResult {
   outcome: RaceOutcome;
+  /** Why the challenge failed, or null when the player completed it. */
+  failureReason: RaceFailureReason | null;
+  /**
+   * Star rating for a completed run, 0-3. Always 0 on a failure. See
+   * `CHALLENGE` in GameConfig for the thresholds.
+   */
+  stars: number;
   /** The player's total race time. On failure this is the time they were beaten. */
   timeMs: number;
   lapTimesMs: number[];
