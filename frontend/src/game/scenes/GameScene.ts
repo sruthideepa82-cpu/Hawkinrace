@@ -15,6 +15,7 @@ import { CHARACTERS } from '../../data/characters';
 import { CARS } from '../../data/cars';
 import { VecnaEntity } from '../entities/VecnaEntity';
 import { SupernaturalSystem } from '../systems/SupernaturalSystem';
+import { CollisionDebug } from '../systems/CollisionDebug';
 
 const PHYSICS_STEP = 1 / 120;
 const MAX_FRAME_SECONDS = 0.05;
@@ -39,6 +40,7 @@ export class GameScene extends Phaser.Scene {
   private rainEmitter?: Phaser.GameObjects.Particles.ParticleEmitter;
   private vecna?: VecnaEntity;
   private supernaturalSystem?: SupernaturalSystem;
+  private collisionDebug!: CollisionDebug;
 
   constructor() {
     super(SCENE_KEYS.game);
@@ -168,8 +170,12 @@ export class GameScene extends Phaser.Scene {
     if (!this.scene.isActive(SCENE_KEYS.hud)) this.scene.launch(SCENE_KEYS.hud);
     
     this.supernaturalSystem = new SupernaturalSystem(this, layout, this.session.player);
-    
-    this.game.events.on(GAME_EVENTS.supernaturalEvent, (ev: any) => {
+
+    // Own handler, removed by reference on shutdown. `game.events.off(event)`
+    // with no listener drops EVERY listener for that event, which quietly
+    // unplugged the HUD's own supernatural listener on the first restart and
+    // left the ability bar dead for the rest of the session.
+    const onSupernaturalEvent = (ev: any) => {
       if (ev.type === 'takeover_start') {
         this.cameras.main.setBackgroundColor('#1a0000');
         this.add.rectangle(0, 0, layout.worldWidth, layout.worldHeight, 0xff0000, 0.2)
@@ -180,27 +186,52 @@ export class GameScene extends Phaser.Scene {
       } else if (ev.type === 'ability_end') {
         this.playerCar.sprite.clearTint();
       }
-    });
-    
+    };
+    this.game.events.on(GAME_EVENTS.supernaturalEvent, onSupernaturalEvent);
+
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
-      this.game.events.off(GAME_EVENTS.supernaturalEvent);
+      this.game.events.off(GAME_EVENTS.supernaturalEvent, onSupernaturalEvent);
     });
+
+    // Development-only collision overlay. `available` is false in a production
+    // build, so the key does nothing there and the code is never constructed.
+    this.collisionDebug = new CollisionDebug(this, layout);
   }
 
   override update(_time: number, deltaMs: number): void {
-    if (this.inputController.restartPressed()) {
+    const race = this.session.race;
+
+    // Restart rebuilds the scene from scratch. It is offered only while the
+    // race is live: once the race is over the results screen owns the display
+    // and RETRY there builds a brand new race underneath it.
+    if (!race.isOver && this.inputController.restartPressed()) {
       this.scene.restart();
       return;
     }
 
-    if (this.inputController.cameraPressed()) this.cameraRig.cycle();
+    // Pause freezes the race clock and the cars together. Keys are released on
+    // both edges, because a key let go of while the race was frozen never
+    // delivers its keyup and would otherwise still be held when play resumes.
+    if (this.inputController.pausePressed()) {
+      if (race.pause() || race.resume()) this.inputController.release();
+    }
 
-    this.accumulator += Math.min(deltaMs / 1000, MAX_FRAME_SECONDS);
+    if (this.inputController.cameraPressed()) this.cameraRig.cycle();
+    if (this.collisionDebug?.available && this.inputController.debugPressed()) {
+      this.collisionDebug.toggle();
+    }
+
+    const isOver = race.isOver;
+    const isPaused = race.isPaused;
+    // A frozen race banks no time. The frame it was frozen on must not be paid
+    // out as a lump the moment play resumes.
+    if (!isOver && !isPaused) this.accumulator += Math.min(deltaMs / 1000, MAX_FRAME_SECONDS);
+    else this.accumulator = 0;
+
     const input = this.inputController.read();
-    
-    const isOver = this.session.race.isOver;
+
     if (!isOver) {
-      if (this.supernaturalSystem) {
+      if (!isPaused && this.supernaturalSystem) {
         this.supernaturalSystem.update(deltaMs / 1000, _time, input.ability);
       }
       while (this.accumulator >= PHYSICS_STEP) {
@@ -208,8 +239,6 @@ export class GameScene extends Phaser.Scene {
         this.session.step(PHYSICS_STEP, input, abilityBoost);
         this.accumulator -= PHYSICS_STEP;
       }
-    } else {
-      this.accumulator = 0;
     }
 
     // A confirmed player-opponent contact fails the challenge inside the step.
@@ -222,7 +251,7 @@ export class GameScene extends Phaser.Scene {
     const player = this.session.player;
 
     const speed = player.physics.speed;
-    const racing = this.session.race.isRacing;
+    const racing = race.isRacing;
     this.playerCar.sync(player.physics, {
       braking: racing && input.brake,
       accelerating: racing && input.accelerate,
@@ -258,6 +287,9 @@ export class GameScene extends Phaser.Scene {
       this.cameraRig.updateIntro(player.physics, deltaMs, hud.introRemainingMs, introTotal, this.bridge.config.trackId);
     } else if (over) {
       this.cameraRig.updateResults(player.physics, deltaMs);
+    } else if (hud.state === 'paused') {
+      // The view holds exactly where it was: a paused race that drifted under
+      // the player is a race that does not look paused.
     } else {
       this.cameraRig.update(player.physics, speed, deltaMs, twist);
     }
@@ -266,6 +298,8 @@ export class GameScene extends Phaser.Scene {
       this.rainEmitter.setPosition(this.cameras.main.scrollX + this.cameras.main.width / 2, this.cameras.main.scrollY);
     }
 
+    // The flash belongs to the moment the lights go out. A lap transition is
+    // still a live race, so resuming from the card must not flash it again.
     if (this.previousState === 'countdown' && hud.state === 'racing') {
       this.cameras.main.flash(500, 255, 255, 255);
     }
@@ -277,6 +311,8 @@ export class GameScene extends Phaser.Scene {
     }
 
     this.previousState = hud.state;
+
+    this.collisionDebug?.update(this.session, player.physics);
 
     this.game.events.emit(GAME_EVENTS.hudUpdate, {
       ...hud,

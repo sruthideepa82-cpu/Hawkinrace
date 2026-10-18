@@ -18,5 +18,10 @@
     "noImplicitOverride": true,
     "types": ["vite/client"]
   },
-  "include": ["src", "vite.config.ts"]
+  "include": ["src", "vite.config.ts"],
+  // `src/game/highway` is an in-progress pseudo-3D highway module that is not
+  // wired into the game and imports a `HIGHWAY*` config block that does not
+  // exist. It is left on disk untouched, but excluded here so it cannot fail the
+  // build for the game that does ship.
+  "exclude": ["src/game/highway"]
 }

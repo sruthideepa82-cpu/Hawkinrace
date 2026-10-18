@@ -12,7 +12,7 @@ import { RaceSession } from '../src/game/systems/RaceSession';
 import { AiDriver } from '../src/game/systems/AiDriver';
 import { getAiProfile } from '../src/game/config/racers';
 import { LapManager } from '../src/game/systems/LapManager';
-import { RACE, CAR } from '../src/game/config/GameConfig';
+import { RACE, COLLISION } from '../src/game/config/GameConfig';
 import { CHARACTERS } from '../src/data/characters';
 import { CARS } from '../src/data/cars';
 import { TRACKS } from '../src/data/tracks';
@@ -105,7 +105,7 @@ function runRace(
 
     const input: InputState = session.race.isRacing
       ? playerBot.update(STEP, layout, player.physics, rivals, !player.nitro.isEmpty)
-      : { accelerate: false, brake: false, steer: 0, nitro: false };
+      : { accelerate: false, brake: false, steer: 0, nitro: false, ability: false };
 
     const finishedBefore = session.racers.filter((r) => r.finished).length;
     session.step(STEP, input);
@@ -117,7 +117,7 @@ function runRace(
     // Track containment: nobody should be flung off the world.
     for (const racer of session.racers) {
       const d = layout.locate(racer.physics.x, racer.physics.y).distance;
-      if (d > layout.roadWidth / 2 + 45) {
+      if (d > layout.corridorHalfWidth) {
         offTrackFrames++;
         maxOffTrackDistance = Math.max(maxOffTrackDistance, d);
       }
@@ -196,7 +196,7 @@ console.log('[grid] four distinct racers');
     ...session.racers.flatMap((a, i) =>
       session.racers.slice(i + 1).map((b) => Math.hypot(a.physics.x - b.physics.x, a.physics.y - b.physics.y))),
   );
-  check('no two cars spawn overlapping', spread > CAR.collisionRadius, `min spacing ${spread.toFixed(1)}px`);
+  check('no two cars spawn overlapping', spread > COLLISION.halfLength, `min spacing ${spread.toFixed(1)}px`);
   check('totalLaps is 3', RACE.totalLaps === 3);
   check('player is car[0]', session.player === session.racers[0]);
 }
@@ -247,7 +247,7 @@ console.log('\n[checkpoints] ordered validation blocks shortcuts');
 
 // ------------------------------------------------------------------ full race
 console.log('\n[race] full 4-car race on Hawkins Streets');
-const street = runRace('hawkins-streets', 'steve', 'falcon-gt');
+const street = runRace('hawkins-streets', 'will', 'apex-vulcan');
 {
   check('race completed', street.finished);
   checkClassification(street, 'Hawkins Streets');
@@ -263,7 +263,7 @@ const street = runRace('hawkins-streets', 'steve', 'falcon-gt');
   check('nitro was actually used', street.nitroUsed > 0, `${street.nitroUsed} frames boosting`);
   check('cars stayed on track (no flying off)', street.maxOffTrackDistance < layoutBound('hawkins-streets'),
     `max ${street.maxOffTrackDistance.toFixed(0)}px from centreline`);
-  check('cars did not end up stacked', street.minSpacing > CAR.collisionRadius * 0.9,
+  check('cars did not end up stacked', street.minSpacing > COLLISION.halfLength * 0.9,
     `closest approach ${street.minSpacing.toFixed(1)}px`);
 
   console.log('    classification:', street.finalStandings
@@ -277,7 +277,7 @@ const street = runRace('hawkins-streets', 'steve', 'falcon-gt');
 // just one with a card on the select screen.
 console.log('\n[race] every unlocked map is completable');
 for (const trackId of TRACKS.filter((t) => t.playable).map((t) => t.id)) {
-  const run = runRace(trackId, 'steve', 'falcon-gt');
+  const run = runRace(trackId, 'will', 'apex-vulcan');
   const name = TRACKS.find((t) => t.id === trackId)?.name ?? trackId;
   check(`${name}: race completes`, run.finished);
   checkClassification(run, name);
@@ -288,14 +288,14 @@ for (const trackId of TRACKS.filter((t) => t.playable).map((t) => t.id)) {
 
 // ------------------------------------------------------------- anti-gravity
 console.log('\n[race] full 4-car race on The Upside Down (anti-gravity)');
-const upside = runRace('upside-down', 'steve', 'falcon-gt');
+const upside = runRace('upside-down', 'will', 'apex-vulcan');
 {
   const layout = new TrackLayout(getTrackDefinition('upside-down'));
   check('track has anti-gravity ranges', (layout.definition.antiGravityRanges?.length ?? 0) > 0);
   check('race completed on anti-gravity track', upside.finished);
   checkClassification(upside, 'The Upside Down');
   check('lap count never exceeded 3', upside.maxLapSeen <= 3, `max ${upside.maxLapSeen}`);
-  check('cars stayed attached to the track', upside.maxOffTrackDistance < layout.roadWidth / 2 + 45,
+  check('cars stayed attached to the track', upside.maxOffTrackDistance < layout.corridorHalfWidth,
     `max ${upside.maxOffTrackDistance.toFixed(0)}px`);
   console.log('    classification:', upside.finalStandings
     .map((s) => `${s.position}.${s.characterName}(${s.finishTimeMs ? (s.finishTimeMs / 1000).toFixed(2) : '--'}s)`)
@@ -322,7 +322,7 @@ console.log('\n[failure] the rule holds on the anti-gravity track too');
     { ...getAiProfile(CHARACTERS[0].id), cornerConfidence: 0.5, pace: 0.5 },
     session.player.tuning,
   );
-  const noInput: InputState = { accelerate: false, brake: false, steer: 0, nitro: false };
+  const noInput: InputState = { accelerate: false, brake: false, steer: 0, nitro: false, ability: false };
   while (!session.race.isRacing && !session.race.isOver) session.step(STEP, noInput);
   for (let i = 0; i < 120 * 500 && !session.race.isOver; i++) {
     const input = session.race.isRacing
@@ -372,7 +372,7 @@ console.log('\n[failure] three AI finishing before the player ends the race');
       );
 
     const bots = new Map(session.racers.map((r) => [r, botFor(r)]));
-    const noInput: InputState = { accelerate: false, brake: false, steer: 0, nitro: false };
+    const noInput: InputState = { accelerate: false, brake: false, steer: 0, nitro: false, ability: false };
 
     // Let the countdown clear.
     while (!session.race.isRacing && !session.race.isOver) session.step(STEP, noInput);
@@ -406,60 +406,42 @@ console.log('\n[failure] three AI finishing before the player ends the race');
 
   // 5, 6, 7. One AI first -> race continues. Two AI first -> still continues.
   //    Three AI first -> the player has failed.
+  //
+  // A slow but genuinely driving player is used rather than a car frozen on the
+  // racing line: parking a car where the AI have to drive ends the race on the
+  // challenge's collision rule, which is a different rule and is covered above.
+  // Here the player really cannot keep up, so the finishing order is decided by
+  // the race.
   {
-    // Drive the player slowly and let the AI run; count the frames on which the
-    // race ends versus how many AI had finished at that point.
-    const oneAndTwo = [1, 2].map((aiTarget) => {
-      const layout = new TrackLayout(getTrackDefinition('hawkins-streets'));
-      const session = new RaceSession(layout, buildGrid(CHARACTERS[0], CARS[0]));
-      const player = session.player;
-      const playerBot = new AiDriver(
-        { ...getAiProfile(CHARACTERS[0].id), cornerConfidence: 0.9, pace: 0.9 },
-        player.tuning,
-      );
-      const noInput: InputState = { accelerate: false, brake: false, steer: 0, nitro: false };
-      while (!session.race.isRacing && !session.race.isOver) session.step(STEP, noInput);
+    const layout = new TrackLayout(getTrackDefinition('hawkins-streets'));
+    const session = new RaceSession(layout, buildGrid(CHARACTERS[0], CARS[0]));
+    const player = session.player;
+    const playerBot = new AiDriver(
+      { ...getAiProfile(CHARACTERS[0].id), cornerConfidence: 0.5, pace: 0.5 },
+      player.tuning,
+    );
+    const noInput: InputState = { accelerate: false, brake: false, steer: 0, nitro: false, ability: false };
+    while (!session.race.isRacing && !session.race.isOver) session.step(STEP, noInput);
 
-      // Freeze the player in place so only the AI can finish. Freeze them all but
-      // `aiTarget` of them off the road by parking them beside the finish line
-      // pointing at it -- but instead, simply hold the player still and race
-      // until exactly the target number of AI have finished.
-      const heldPlayer = { x: player.physics.x, y: player.physics.y };
-      let framesAtTarget = -1;
-      for (let i = 0; i < 120 * 400; i++) {
-        if (session.race.isOver) break;
-        const input: InputState = session.race.isRacing
-          ? playerBot.update(STEP, layout, player.physics,
-              session.racers.filter((r) => !r.isPlayer).map((r) => ({
-                physics: r.physics, aheadInRace: r.laps.totalRaceProgress > player.laps.totalRaceProgress,
-              })), !player.nitro.isEmpty)
-          : noInput;
-        // Park the player: it should be the one that cannot keep up, so the AI
-        // finish ahead of it without it being stopped artificially mid-corner.
-        player.physics.x = heldPlayer.x;
-        player.physics.y = heldPlayer.y;
-        session.step(STEP, input);
-        if (framesAtTarget < 0 && session.aiFinishedCount() >= aiTarget) framesAtTarget = i;
-        // Once the target count is reached, check the race has NOT ended.
-        if (framesAtTarget >= 0 && session.aiFinishedCount() >= aiTarget && aiTarget < 3) {
-          break;
-        }
+    // Was the race still running at the moment the Nth AI took the flag?
+    const overWhen: (boolean | null)[] = [null, null, null];
+    for (let i = 0; i < 120 * 400 && !session.race.isOver; i++) {
+      const input: InputState = session.race.isRacing
+        ? playerBot.update(STEP, layout, player.physics,
+            session.racers.filter((r) => !r.isPlayer).map((r) => ({
+              physics: r.physics, aheadInRace: r.laps.totalRaceProgress > player.laps.totalRaceProgress,
+            })), !player.nitro.isEmpty)
+        : noInput;
+      session.step(STEP, input);
+      const done = session.aiFinishedCount();
+      for (let n = 0; n < 3; n++) {
+        if (overWhen[n] === null && done >= n + 1) overWhen[n] = session.race.isOver;
       }
-      return {
-        aiTarget,
-        aiFinished: session.aiFinishedCount(),
-        isOver: session.race.isOver,
-        isFailed: session.race.isFailed,
-        playerFinished: player.finished,
-      };
-    });
+    }
 
-    check('1 AI finishing first does NOT fail the race',
-      oneAndTwo[0].aiFinished >= 1 && !oneAndTwo[0].isFailed,
-      `ai finished ${oneAndTwo[0].aiFinished}, failed=${oneAndTwo[0].isFailed}`);
-    check('2 AI finishing first does NOT fail the race',
-      oneAndTwo[1].aiFinished >= 2 && !oneAndTwo[1].isFailed,
-      `ai finished ${oneAndTwo[1].aiFinished}, failed=${oneAndTwo[1].isFailed}`);
+    check('1 AI finishing first does NOT fail the race', overWhen[0] === false, `race over: ${overWhen[0]}`);
+    check('2 AI finishing first does NOT fail the race', overWhen[1] === false, `race over: ${overWhen[1]}`);
+    check('3 AI finishing first ends the race', overWhen[2] === true, `race over: ${overWhen[2]}`);
   }
 
   // 7. Three AI finish before the player -> failure, immediately.
@@ -501,11 +483,18 @@ console.log('\n[failure] three AI finishing before the player ends the race');
      * teleport jumps over the gate line and is never credited with it. Cars have
      * to actually drive round, which is what these checks are meant to exercise.
      */
-    function runOrdered(order: readonly 'player' | 'ai'[]) {
+    function runOrdered(order: readonly ('player' | 'ai')[]) {
       const layout = new TrackLayout(getTrackDefinition('hawkins-streets'));
       const character = CHARACTERS[0];
-      const session = new RaceSession(layout, buildGrid(character, CARS[0]));
-      const noInput: InputState = { accelerate: false, brake: false, steer: 0, nitro: false };
+      // The parked cars sit in the racing line on purpose, so this scenario runs
+      // with the challenge's collision rule switched off (see
+      // `RaceSessionOptions`). What is under test is the finishing ORDER and the
+      // classification that follows it; the collision rule would otherwise end
+      // every one of these runs the moment the first car is released.
+      const session = new RaceSession(layout, buildGrid(character, CARS[0]), undefined, {
+        collisionFailsChallenge: false,
+      });
+      const noInput: InputState = { accelerate: false, brake: false, steer: 0, nitro: false, ability: false };
       const ais = session.racers.filter((r) => !r.isPlayer);
       const held = new Map(session.racers.map((r) => [r, { x: r.physics.x, y: r.physics.y }]));
       const playerBot = new AiDriver(getAiProfile(character.id), session.player.tuning);
@@ -563,7 +552,7 @@ console.log('\n[failure] three AI finishing before the player ends the race');
     // 1st: the player is released first and reaches the flag before anything else.
     {
       const { result, session } = runOrdered(['player', 'ai', 'ai', 'ai']);
-      check('Steve 1st -> WIN (P1)',
+      check('Will 1st -> WIN (P1)',
         result?.playerPosition === 1 && result?.outcome === 'finished',
         `P${result?.playerPosition}, ${result?.outcome}`);
       check('1st place is never reported as a failure',
@@ -577,7 +566,7 @@ console.log('\n[failure] three AI finishing before the player ends the race');
       while (queue.length < 4) queue.push('ai');
       const { result, session } = runOrdered(queue);
       const expected = aiFirst + 1;
-      check(`${aiFirst} AI first -> Steve is P${expected}`,
+      check(`${aiFirst} AI first -> Will is P${expected}`,
         result?.playerPosition === expected,
         `expected P${expected}, got P${result?.playerPosition}`);
       check(`${aiFirst} AI first -> result is 'finished', not a failure`,
@@ -590,7 +579,7 @@ console.log('\n[failure] three AI finishing before the player ends the race');
     {
       const { result, session } = runOrdered(['ai', 'ai', 'ai', 'player']);
       const ais = session.racers.filter((r) => !r.isPlayer);
-      check('3 AI first -> Steve is classified P4',
+      check('3 AI first -> Will is classified P4',
         result?.playerPosition === 4,
         `P${result?.playerPosition}`);
       check('3 AI first -> outcome is a FAILURE, never "RACE COMPLETE"',
@@ -627,7 +616,7 @@ console.log('\n[failure] three AI finishing before the player ends the race');
     const session = new RaceSession(layout, buildGrid(CHARACTERS[0], CARS[0]));
     const player = session.player;
     const playerBot = new AiDriver({ ...getAiProfile(CHARACTERS[0].id), cornerConfidence: 0.5, pace: 0.5 }, player.tuning);
-    const noInput: InputState = { accelerate: false, brake: false, steer: 0, nitro: false };
+    const noInput: InputState = { accelerate: false, brake: false, steer: 0, nitro: false, ability: false };
     while (!session.race.isRacing && !session.race.isOver) session.step(STEP, noInput);
     for (let i = 0; i < 120 * 400 && !session.race.isOver; i++) {
       const input = session.race.isRacing
@@ -686,7 +675,7 @@ console.log('\n[variety] outcome must follow the race, not be decided in advance
     ['blitzer', 1.10],
   ];
   for (const [label, confidence] of skills) {
-    const r = runRace('hawkins-streets', 'steve', 'falcon-gt', 420, confidence);
+    const r = runRace('hawkins-streets', 'will', 'apex-vulcan', 420, confidence);
     bySkill.push({
       skill: label,
       winner: r.finalStandings[0]?.characterId ?? 'none',
@@ -747,7 +736,7 @@ console.log('\n[overtaking] positions swap when a car passes another');
   // still on the grid and nothing is recorded.
   check('race starts in countdown', !session.race.isRacing);
   while (!session.race.isRacing) {
-    session.step(STEP, { accelerate: false, brake: false, steer: 0, nitro: false });
+    session.step(STEP, { accelerate: false, brake: false, steer: 0, nitro: false, ability: false });
   }
 
   // Teleport the trailer far ahead along the centerline. Each move must be set
@@ -758,7 +747,7 @@ console.log('\n[overtaking] positions swap when a car passes another');
     const p = layout.pointAhead(from, (distance * i) / 40, 0);
     trailer.physics.x = p.x;
     trailer.physics.y = p.y;
-    session.step(STEP, { accelerate: false, brake: false, steer: 0, nitro: false });
+    session.step(STEP, { accelerate: false, brake: false, steer: 0, nitro: false, ability: false });
   }
 
   const board = session.standings();
@@ -782,7 +771,7 @@ console.log('\n[retry] full reset restores every car');
 {
   const layout = new TrackLayout(getTrackDefinition('hawkins-streets'));
   const session = new RaceSession(layout, buildGrid(CHARACTERS[0], CARS[0]));
-  const run = runRace('hawkins-streets', 'steve', 'falcon-gt');
+  const run = runRace('hawkins-streets', 'will', 'apex-vulcan');
 
   // Drive a fresh session part-way, then reset it.
   const partial = new RaceSession(layout, buildGrid(CHARACTERS[0], CARS[0]));
@@ -879,7 +868,7 @@ function checkClassification(run: RunResult, trackName: string): void {
 }
 
 function layoutBound(trackId: string): number {
-  return new TrackLayout(getTrackDefinition(trackId)).roadWidth / 2 + 45;
+  return new TrackLayout(getTrackDefinition(trackId)).corridorHalfWidth + 2;
 }
 
 console.log(`\n=== ${checks - failures}/${checks} checks passed ===`);

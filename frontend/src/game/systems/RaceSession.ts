@@ -99,6 +99,32 @@ export interface HudData extends RaceSnapshot {
   totalLaps: number;
   standings: StandingEntry[];
   rivalsFinished: number;
+  /** The "LAP COMPLETE" card, while it is up. Null otherwise. */
+  lapTransition: LapTransitionData | null;
+}
+
+/**
+ * Everything the lap-completed card shows, read off real race state.
+ *
+ * Nothing here is invented: the lap time is the one the LapManager recorded,
+ * the position is the live ranking over the cars actually on the grid, and the
+ * total is the race clock, which never stopped for the card.
+ */
+export interface LapTransitionData {
+  /** The lap that was just banked (1-based). */
+  completedLap: number;
+  totalLaps: number;
+  /** Time taken by that lap. */
+  lapTimeMs: number;
+  /** Fastest lap so far, or null if this was the first. */
+  bestLapMs: number | null;
+  /** Running position on the road, out of `fieldSize`. */
+  position: number;
+  fieldSize: number;
+  /** Laps still to run after this one. */
+  lapsRemaining: number;
+  /** Race time so far. */
+  totalMs: number;
 }
 
 /** Everything GameScene sends to the HUD each frame. */
@@ -216,6 +242,11 @@ export class RaceSession {
   }
 
   step(dt: number, playerInput: InputState, abilityBoost: number = 1): void {
+    // A paused or finished race advances nothing: not the clock, not the cars,
+    // not the laps. This is the single place that guarantees it, so no caller
+    // can accidentally keep a paused race alive by stepping it anyway.
+    if (this.race.isPaused || this.race.isOver) return;
+
     const racing = this.race.isRacing;
 
     // The clock is shared by the whole field.
@@ -233,7 +264,9 @@ export class RaceSession {
         // Out of the race: no input, and no lap progress from here on. It still
         // obeys the track boundary, otherwise it would coast off into the scenery.
         racer.nitro.update(dt, false);
-        const surface = this.layout.getSurface(racer.physics.x, racer.physics.y);
+        const surface = this.layout.getSurface(
+          racer.physics.x, racer.physics.y, racer.physics.heading, CAR_HALF_LENGTH, CAR_HALF_WIDTH,
+        );
         racer.physics.step(dt, NO_INPUT, surface.dragMultiplier);
       } else {
         const input = !racing
@@ -248,7 +281,9 @@ export class RaceSession {
         // share one code path.
         const wantBoost = racing && input.nitro && input.accelerate && !input.brake;
         const boost = racer.nitro.update(dt, wantBoost);
-        const surface = this.layout.getSurface(racer.physics.x, racer.physics.y);
+        const surface = this.layout.getSurface(
+          racer.physics.x, racer.physics.y, racer.physics.heading, CAR_HALF_LENGTH, CAR_HALF_WIDTH,
+        );
         
         const ab = racer.isPlayer ? abilityBoost : 1.0;
         racer.physics.step(dt, input, surface.dragMultiplier, boost, ab);
@@ -262,24 +297,33 @@ export class RaceSession {
         // slides along the barrier instead of grinding to a stop on it. The
         // assist moves the nose, which changes how far the car reaches toward
         // the barrier, so the clamp below uses the heading it ends up with.
-        if (accelerating) racer.physics.alignToWall(hit.nx, hit.ny, CAR.wallAssistRate, dt);
-        const seated = this.layout.resolveBoundary(
-          racer.physics.x, racer.physics.y, racer.physics.heading, CAR_HALF_LENGTH, CAR_HALF_WIDTH,
-        );
-        racer.physics.applyCollision(seated ?? hit);
+        // Without the assist the heading has not moved, so the correction that
+        // was just computed is still the right one and the boundary does not
+        // have to be solved a second time.
+        let seated = hit;
+        if (accelerating) {
+          racer.physics.alignToWall(hit.nx, hit.ny, CAR.wallAssistRate, dt);
+          seated = this.layout.resolveBoundary(
+            racer.physics.x, racer.physics.y, racer.physics.heading, CAR_HALF_LENGTH, CAR_HALF_WIDTH,
+          ) ?? hit;
+        }
+        racer.physics.applyCollision(seated, dt);
       }
     }
 
     // 2. Cars cannot occupy the same space.
-    this.separateCars();
+    const displaced = this.separateCars(dt);
 
     // Car-to-car pushes can shove a car past the barrier, so re-clamp the track
-    // boundary afterwards and keep cars off each other as well.
-    for (const racer of this.racers) {
+    // boundary afterwards -- but only for the cars that were actually pushed.
+    // A car nobody touched is already inside the corridor, and solving the
+    // boundary is the most expensive thing in the step.
+    for (const index of displaced) {
+      const racer = this.racers[index];
       const hit = this.layout.resolveBoundary(
         racer.physics.x, racer.physics.y, racer.physics.heading, CAR_HALF_LENGTH, CAR_HALF_WIDTH,
       );
-      if (hit) racer.physics.applyCollision(hit);
+      if (hit) racer.physics.applyCollision(hit, dt);
     }
 
     // 3. Feed every car through the same ordered checkpoint / lap logic.
@@ -292,6 +336,9 @@ export class RaceSession {
         racer.lastLapEvent = event;
         if (event === 'finished') racer.justFinished = true;
       }
+      // A lap banked by the player puts the completion card up. Only a lap, not
+      // a finish: the last one goes straight to the results screen instead.
+      if (this.player.lastLapEvent === 'lap') this.race.beginLapTransition();
       this.assignFinishPositions();
       this.resolveOutcome();
     }
@@ -384,9 +431,13 @@ export class RaceSession {
    * Resolved over a few passes: with four cars a single pass leaves them
    * overlapped, because pushing one pair apart can shove a car into a third that
    * the same pass has already walked past.
+   *
+   * @returns the indices of the cars this actually moved, so the caller only
+   *          re-checks those against the track boundary.
    */
-  private separateCars(): void {
+  private separateCars(dt: number): number[] {
     const { halfLength, halfWidth } = COLLISION;
+    const moved = new Set<number>();
 
     for (let pass = 0; pass < SEPARATION_PASSES; pass++) {
       for (let i = 0; i < this.racers.length; i++) {
@@ -423,6 +474,8 @@ export class RaceSession {
           a.y -= ny * depth * aShare;
           b.x += nx * depth * bShare;
           b.y += ny * depth * bShare;
+          moved.add(i);
+          moved.add(j);
 
           // Velocity response, scaled by how hard the cars are closing. The
           // relative speed along the normal is negative while they approach.
@@ -440,7 +493,12 @@ export class RaceSession {
 
           // Both cars lose speed, more so on a hard hit. This is what makes a
           // scrape feel different from a head-on: severity is the closing speed.
-          const scrub = 1 - COLLISION.maxSpeedLoss * severity;
+          // Expressed per second, because this runs on every physics step and a
+          // per-contact fraction scaled with the frame rate.
+          const scrub = Math.pow(
+            1 - (1 - COLLISION.speedRetainedPerSecond) * severity,
+            dt,
+          );
           a.vx *= scrub;
           a.vy *= scrub;
           b.vx *= scrub;
@@ -448,6 +506,8 @@ export class RaceSession {
         }
       }
     }
+
+    return [...moved];
   }
 
   /**
@@ -517,6 +577,33 @@ export class RaceSession {
       totalLaps: me.totalLaps,
       standings: board,
       rivalsFinished: this.racers.filter((r) => r.finished).length,
+      lapTransition: this.lapTransitionData(),
+    };
+  }
+
+  /**
+   * The lap-completed card, or null when it is not up.
+   *
+   * Read from the player's own lap bookkeeping plus the live standings, so the
+   * lap time is the one that was actually driven and the position is the one
+   * they actually hold. The final lap never produces a card: `LapManager`
+   * reports it as `finished`, and the results screen takes over from there.
+   */
+  private lapTransitionData(): LapTransitionData | null {
+    if (!this.race.isLapTransition) return null;
+    const laps = this.player.laps;
+    const lapTimeMs = laps.lastLapMs;
+    if (lapTimeMs === null) return null;
+    const completedLap = Math.max(1, laps.currentLap - 1);
+    return {
+      completedLap,
+      totalLaps: laps.totalLaps,
+      lapTimeMs,
+      bestLapMs: laps.bestLapMs,
+      position: this.playerPosition(),
+      fieldSize: this.racers.length,
+      lapsRemaining: Math.max(0, laps.totalLaps - completedLap),
+      totalMs: this.race.elapsed,
     };
   }
 

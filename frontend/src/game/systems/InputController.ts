@@ -90,8 +90,30 @@ export class InputController {
     return this.anyJustDown(CONTROLS.restart);
   }
 
+  /** Pause toggle. Checked with JustDown, so holding the key does not re-fire. */
+  pausePressed(): boolean {
+    return this.anyJustDown(CONTROLS.pause);
+  }
+
+  /**
+   * Drops every held key at once.
+   *
+   * Called when the race is paused and when it restarts: the window does not
+   * deliver a keyup for a key the player let go of while the game had stopped
+   * stepping, so without this the car would drive off on its own the moment
+   * play resumed.
+   */
+  release(): void {
+    this.releaseAll();
+  }
+
   /** Cycles the camera between the chase / hood / map views. */
   cameraPressed(): boolean {
     return this.anyJustDown(CONTROLS.camera);
+  }
+
+  /** Development-only collision overlay toggle. */
+  debugPressed(): boolean {
+    return this.anyJustDown(CONTROLS.debug);
   }
 }

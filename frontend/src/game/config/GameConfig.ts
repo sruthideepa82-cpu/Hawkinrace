@@ -52,41 +52,25 @@ export const CONTROLS = {
   ability: ['F', 'E'],
   restart: ['R'],
   camera: ['C', 'V'],
+  pause: ['P'],
+  /** Development-only collision overlay. Ignored in a production build. */
+  debug: ['B'],
 } as const;
 
-/** Base car handling. Units: pixels and seconds. Cars scale these via stats. */
+/**
+ * The car body, in the units the world is measured in.
+ *
+ * Handling (top speed, acceleration, braking, steering, grip) is NOT here: it
+ * lives in `config/carTuning`, one entry per chassis. This block used to hold a
+ * second, unread copy of the same numbers, so the two could never agree.
+ */
 export const CAR = {
+  /** Chassis size on screen, before `footprintPadding`. */
   width: 60,
   height: 30,
-  maxSpeed: 560,
-  maxReverseSpeed: 150,
-  /** Peak forward acceleration; fades out as the car nears max speed. */
-  acceleration: 480,
-  /** Deceleration while braking (S pressed while moving forward). */
-  brakeDeceleration: 900,
-  reverseAcceleration: 240,
-  /** Below this forward speed, holding S reverses instead of braking. */
-  reverseSwitchSpeed: 20,
-  /** Constant coasting deceleration when no pedal is pressed. */
-  coastFriction: 90,
-  /** Speed-proportional drag (1/s) while coasting. */
-  drag: 0.55,
-  /** Sideways velocity decay (1/s). Higher = grippier, lower = driftier. */
-  lateralGrip: 7,
-  /** Yaw rate (rad/s) at full steering lock and ideal speed. */
-  maxSteerRate: 2.7,
-  /** Speed at which steering is most effective. */
-  steerPeakSpeed: 150,
-  /** Steering authority lost at top speed (0-1). */
-  highSpeedSteerLoss: 0.4,
-  /** How fast the wheel turns toward the key (full lock in 1/x s). */
-  steerResponse: 5,
-  /** How fast the wheel re-centres when keys are released. */
-  steerReturn: 8,
-  collisionRadius: 16,
   /**
    * How far past the chassis the wheels and shadow reach. It counts as part of
-   * the car for track-edge collision, so the whole car stays on the asphalt
+   * the car for track-edge collision, so the whole car stays on the road
    * instead of letting a wheel clip through the kerb.
    */
   footprintPadding: 6,
@@ -96,9 +80,6 @@ export const CAR = {
    * not wrestle the wheel off the driver.
    */
   wallAssistRate: 1.2,
-  /** How much speed is lost in a head-on wall hit (0-1). Sliding barely scrubs. */
-  wallScrub: 0.6,
-  wallBounce: 0.25,
   /** Converts px/s to displayed km/h. */
   speedDisplayFactor: 0.32,
 } as const;
@@ -148,8 +129,15 @@ export const COLLISION = {
   minRestitution: 0.05,
   /** Bounce returned at full severity. */
   maxRestitution: 0.35,
-  /** Fraction of speed scrubbed off at full severity. */
-  maxSpeedLoss: 0.35,
+  /**
+   * Fraction of speed two cars keep per SECOND at full severity.
+   *
+   * A per-second rate, not a per-contact fraction: contact is resolved on every
+   * physics step, so a per-contact number made the same shunt several times as
+   * punishing at 120Hz as at 40Hz and left two touching cars pinned together
+   * with no speed at all.
+   */
+  speedRetainedPerSecond: 0.65,
 } as const;
 
 /**

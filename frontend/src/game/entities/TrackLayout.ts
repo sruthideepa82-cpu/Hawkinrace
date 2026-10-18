@@ -1,4 +1,5 @@
 import type { Point, TrackDefinition } from '../config/tracks';
+import { ROAD_BANDS } from '../config/tracks';
 import { Gate } from '../systems/Gate';
 import { nearestOnClosedPolyline, resampleClosedPolyline, smoothClosedLoop, wrapFraction, wrapIndex } from '../utils/geometry';
 import type { CollisionResult } from './CarPhysics';
@@ -7,11 +8,44 @@ export interface SpawnPoint extends Point {
   heading: number;
 }
 
-export type SurfaceType = 'road' | 'sidewalk' | 'grass';
+export type SurfaceType = 'road' | 'kerb' | 'sidewalk' | 'grass';
 
 export interface SurfaceData {
   type: SurfaceType;
   dragMultiplier: number;
+}
+
+/**
+ * Speed penalty per surface, applied to acceleration, coasting drag and top
+ * speed. Ordered from the fastest surface to the slowest.
+ *
+ * These are multipliers on the road's numbers, so the car is never faster on
+ * anything: the kerb costs roughly half the acceleration, the pavement a bit
+ * more, and the grass leaves barely half the top speed. Anything the car cannot
+ * legally stand on is solid scenery and is handled by `resolveBoundary` instead.
+ */
+const SURFACE_DRAG: Readonly<Record<SurfaceType, number>> = {
+  road: 1,
+  kerb: 1.9,
+  sidewalk: 2.6,
+  grass: 3.6,
+};
+
+/** One shared (immutable) record per surface, so nothing can mutate them. */
+const SURFACES: Readonly<Record<SurfaceType, SurfaceData>> = {
+  road: { type: 'road', dragMultiplier: SURFACE_DRAG.road },
+  kerb: { type: 'kerb', dragMultiplier: SURFACE_DRAG.kerb },
+  sidewalk: { type: 'sidewalk', dragMultiplier: SURFACE_DRAG.sidewalk },
+  grass: { type: 'grass', dragMultiplier: SURFACE_DRAG.grass },
+};
+
+/** The slowest of several surfaces, which is what a car touching all of them gets. */
+function worstSurface(...surfaces: readonly SurfaceData[]): SurfaceData {
+  let worst = surfaces[0];
+  for (const surface of surfaces) {
+    if (surface.dragMultiplier > worst.dragMultiplier) worst = surface;
+  }
+  return worst;
 }
 
 /** A point on the centerline with its frame, used for steering and progress. */
@@ -32,6 +66,12 @@ export interface TrackSample {
 export class TrackLayout {
   readonly centerline: Point[];
   readonly roadWidth: number;
+  /** Painted kerb outside the asphalt (px). */
+  readonly kerbWidth: number;
+  /** Pavement outside the kerb (px). */
+  readonly sidewalkWidth: number;
+  /** Drivable run-off outside the pavement, before scenery blocks the car (px). */
+  readonly runoffWidth: number;
   readonly worldWidth: number;
   readonly worldHeight: number;
   readonly finishGate: Gate;
@@ -48,6 +88,9 @@ export class TrackLayout {
 
   constructor(readonly definition: TrackDefinition) {
     this.roadWidth = definition.roadWidth;
+    this.kerbWidth = definition.kerbWidth ?? ROAD_BANDS.kerb;
+    this.sidewalkWidth = definition.sidewalkWidth ?? ROAD_BANDS.sidewalk;
+    this.runoffWidth = definition.runoffWidth ?? ROAD_BANDS.runoff;
     this.worldWidth = definition.worldWidth;
     this.worldHeight = definition.worldHeight;
     // Smooth, then redistribute to even arc-length spacing: every lookup below
@@ -90,6 +133,33 @@ export class TrackLayout {
   /** Gates (checkpoints + finish line) a car must clear per lap. */
   get gatesPerLap(): number {
     return this.checkpoints.length + 1;
+  }
+
+  /** Half the asphalt width: the edge of the racing surface. */
+  get roadHalfWidth(): number {
+    return this.roadWidth / 2;
+  }
+
+  /** Outer edge of the painted kerb. */
+  get kerbOuter(): number {
+    return this.roadHalfWidth + this.kerbWidth;
+  }
+
+  /** Outer edge of the pavement. */
+  get pavementOuter(): number {
+    return this.kerbOuter + this.sidewalkWidth;
+  }
+
+  /**
+   * How far from the centerline a car's centre may be before scenery stops it.
+   *
+   * This is the outside of the run-off, so the car is held in by buildings,
+   * fences and trees rather than by a line that is not on screen. The car is
+   * still fitted inside it by `resolveBoundary`, which is what stops a wheel
+   * poking through a wall.
+   */
+  get corridorHalfWidth(): number {
+    return this.pavementOuter + this.runoffWidth;
   }
 
   /** Where a world point sits: distance from the road plus its lap position. */
@@ -221,8 +291,10 @@ export class TrackLayout {
   }
 
   private gateAt(i: number): Gate {
-    // Make gates wide enough to cover the sidewalks and edge tolerances
-    return new Gate(this.centerline[i], this.directionAt(i), this.roadWidth / 2 + 80);
+    // Gates span the whole drivable corridor, so a lap is only credited for a
+    // crossing made on the road (kerb, pavement and run-off included) rather
+    // than for a line crossed out in the scenery.
+    return new Gate(this.centerline[i], this.directionAt(i), this.corridorHalfWidth);
   }
 
   getAntiGravityTwist(x: number, y: number): number {
@@ -254,22 +326,67 @@ export class TrackLayout {
     return 0;
   }
 
-  getSurface(x: number, y: number): SurfaceData {
-    const { distance } = nearestOnClosedPolyline(this.centerline, x, y);
-    const half = this.roadWidth / 2;
-    if (distance <= half) return { type: 'road', dragMultiplier: 1 };
-    if (distance <= half + 40) return { type: 'sidewalk', dragMultiplier: 1.5 };
-    return { type: 'grass', dragMultiplier: 3.0 };
+  /**
+   * Surface under a car, as a drag multiplier.
+   *
+   * With a heading and half-extents (the player's car), the worst surface under
+   * any part of the footprint wins rather than the one under the centre: two
+   * wheels on the kerb really do cost you, and a car whose nose has run onto
+   * the pavement is on the pavement. Called without them, the surface under the
+   * given point is used, which is what tooling and the AI want.
+   */
+  getSurface(
+    x: number,
+    y: number,
+    heading?: number,
+    halfLength?: number,
+    halfWidth?: number,
+  ): SurfaceData {
+    const here = this.locate(x, y);
+    const centre = this.surfaceAtDistance(here.distance);
+    if (heading === undefined || halfLength === undefined || halfWidth === undefined) return centre;
+
+    // How far the car's box reaches to either side of its own centreline.
+    const reach = halfLength * Math.abs(Math.sin(heading)) + halfWidth * Math.abs(Math.cos(heading));
+    if (reach <= 0) return centre;
+
+    // Signed offset from the road, so the two extremes are `offset - reach` and
+    // `offset + reach` rather than both being measured from the centre line.
+    let offset = 0;
+    if (here.distance > 1e-9) {
+      const ox = (x - here.point.x) / here.distance;
+      const oy = (y - here.point.y) / here.distance;
+      offset = (x - here.point.x) * ox + (y - here.point.y) * oy;
+    }
+
+    const near = this.surfaceAtDistance(Math.max(0, Math.abs(offset) - reach));
+    const far = this.surfaceAtDistance(Math.abs(offset) + reach);
+    return worstSurface(centre, near, far);
+  }
+
+  private surfaceAtDistance(distance: number): SurfaceData {
+    if (distance <= this.roadHalfWidth) return SURFACES.road;
+    if (distance <= this.kerbOuter) return SURFACES.kerb;
+    if (distance <= this.pavementOuter) return SURFACES.sidewalk;
+    return SURFACES.grass;
   }
 
   /**
    * Returns a correction if a car at (x, y) heading `heading` would put any part
-   * of its footprint past the road edge (buildings/fences).
+   * of its footprint past the edge of the drivable corridor.
    *
    * `halfLength`/`halfWidth` describe the car's box along and across its
    * heading. Projecting that box onto the direction of the barrier is what keeps
    * a corner or a wheel from poking through when the car is not parallel to the
    * road -- a single collision radius cannot, because the car is long and thin.
+   *
+   * The road is treated as the UNION of every corridor, not as one barrier: the
+   * moment the car fits inside any part of it there is nothing to correct. That
+   * is what makes the inside of a hairpin work, where two stretches of track
+   * overlap and the nearest centerline is not always the road the car is on.
+   * When it fits inside none of them, the smallest correction -- the nearest
+   * barrier -- is applied, so a car caught between two walls is never shoved
+   * back and forth between them or teleported across a corner.
    */
   resolveBoundary(
     x: number,
@@ -278,19 +395,89 @@ export class TrackLayout {
     halfLength: number,
     halfWidth: number,
   ): CollisionResult | null {
-    const { distance, point } = nearestOnClosedPolyline(this.centerline, x, y);
-    if (distance === 0) return null;
+    // Seating is a single scan in the common case, and only repeats when the
+    // moved position is still not quite inside: the correction is made along one
+    // segment's normal, so a car sitting square across the road can end up a
+    // couple of pixels proud of the neighbouring sample it is now nearest. Two
+    // extra passes settle it, and cost nothing at all while the car is on the
+    // road, because that returns on the first segment it is tested against.
+    let px = x;
+    let py = y;
+    let normal: CollisionResult | null = null;
+    for (let pass = 0; pass < 4; pass++) {
+      const seated = this.seat(px, py, heading, halfLength, halfWidth);
+      if (!seated) break;
+      px = seated.x;
+      py = seated.y;
+      normal = seated;
+    }
+    return normal;
+  }
 
-    const ox = (x - point.x) / distance;
-    const oy = (y - point.y) / distance;
-    // Support of the car's box along the outward direction: how far the furthest
-    // corner reaches toward the barrier for the way the car is pointing.
+  /**
+   * One pass of the boundary solve: the displacement and the inward normal that
+   * fit the car inside the corridor, or null when it already fits. See
+   * `resolveBoundary` for the union rule it applies.
+   */
+  private seat(
+    x: number,
+    y: number,
+    heading: number,
+    halfLength: number,
+    halfWidth: number,
+  ): CollisionResult | null {
+    const limit = this.corridorHalfWidth;
+    const n = this.centerline.length;
     const fx = Math.cos(heading);
     const fy = Math.sin(heading);
-    const reach = halfLength * Math.abs(fx * ox + fy * oy) + halfWidth * Math.abs(fx * oy - fy * ox);
-    const limit = this.roadWidth / 2 - reach;
-    if (distance <= limit) return null;
 
-    return { x: point.x + ox * limit, y: point.y + oy * limit, nx: -ox, ny: -oy };
+    let bestDepth = Infinity;
+    let bestX = 0;
+    let bestY = 0;
+
+    for (let i = 0; i < n; i++) {
+      const a = this.centerline[i];
+      const b = this.centerline[(i + 1) % n];
+      const abx = b.x - a.x;
+      const aby = b.y - a.y;
+      const len2 = abx * abx + aby * aby;
+      const t = len2 === 0 ? 0 : Math.max(0, Math.min(1, ((x - a.x) * abx + (y - a.y) * aby) / len2));
+      const px = a.x + abx * t;
+      const py = a.y + aby * t;
+      const dx = x - px;
+      const dy = y - py;
+      const distance = Math.hypot(dx, dy);
+      if (distance <= 1e-9) continue;
+
+      // Support of the car's box along the outward direction: how far the
+      // furthest corner reaches toward the barrier for the way the car points.
+      const ox = dx / distance;
+      const oy = dy / distance;
+      const reach = halfLength * Math.abs(fx * ox + fy * oy) + halfWidth * Math.abs(fx * oy - fy * ox);
+      const depth = distance + reach - limit;
+
+      // The car fits inside this corridor, so it is on the road and nothing
+      // pushes it anywhere. This has to be checked per segment rather than
+      // against the nearest one: where the track passes close to itself the
+      // nearest centerline is not always the road the car is driving on.
+      if (depth <= 0) return null;
+
+      if (depth < bestDepth) {
+        bestDepth = depth;
+        bestX = ox;
+        bestY = oy;
+      }
+    }
+
+    if (bestDepth === Infinity) return null;
+
+    // Seat the whole car back inside the corridor it belongs to, along the
+    // direction it was pushing against.
+    return {
+      x: x - bestX * bestDepth,
+      y: y - bestY * bestDepth,
+      nx: -bestX,
+      ny: -bestY,
+    };
   }
 }

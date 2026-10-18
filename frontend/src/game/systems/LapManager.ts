@@ -59,9 +59,20 @@ export class LapManager {
   }
 
   /** Fastest lap set, or null before the first lap is completed. */
-  get bestLapMs(): number | null {
+get bestLapMs(): number | null {
     if (this.lapTimesMs.length === 0) return null;
     return Math.min(...this.lapTimesMs);
+  }
+
+  /** Time taken by the most recently banked lap, or null before the first one. */
+  get lastLapMs(): number | null {
+    if (this.lapTimesMs.length === 0) return null;
+    return this.lapTimesMs[this.lapTimesMs.length - 1];
+  }
+
+  /** Laps still to run before the chequered flag (0 once the race is done). */
+  get lapsRemaining(): number {
+    return this.raceFinished ? 0 : Math.max(0, this.totalLaps - this._currentLap + 1);
   }
 
   /**

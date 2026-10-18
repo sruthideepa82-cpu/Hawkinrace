@@ -9,7 +9,23 @@ export interface TrackDefinition {
   name: string;
   worldWidth: number;
   worldHeight: number;
+  /**
+   * Width of the asphalt either side of the centerline. The kerb, pavement and
+   * run-off that the renderer draws outside it are declared below, and the
+   * collision, surface and checkpoint code all read those same values, so the
+   * road you can see and the road you can drive on cannot drift apart.
+   */
   roadWidth: number;
+  /** Painted kerb either side of the asphalt (px). */
+  kerbWidth?: number;
+  /** Pavement either side of the kerb (px). */
+  sidewalkWidth?: number;
+  /**
+   * Drivable run-off between the pavement and the scenery that blocks the car
+   * (px). Grass is slow rather than solid, so a wheel has somewhere to go
+   * instead of an invisible wall.
+   */
+  runoffWidth?: number;
   /** Closed loop of control points, driven in order. */
   controlPoints: readonly Point[];
   /** Samples per control-point segment when smoothing the loop. */
@@ -22,6 +38,13 @@ export interface TrackDefinition {
   /** Optional ranges of track distance (0..1) where the track twists. */
   antiGravityRanges?: readonly { start: number; end: number; twist: number }[];
 }
+
+/** Road band widths used when a track does not override them. */
+export const ROAD_BANDS = {
+  kerb: 8,
+  sidewalk: 40,
+  runoff: 70,
+} as const;
 
 export const HAWKINS_STREETS: TrackDefinition = {
   id: 'hawkins-streets',
@@ -107,11 +130,15 @@ export const STARCOURT_RUN: TrackDefinition = {
     { x: 929, y: 2057 },
     { x: 1179, y: 2182 },
     { x: 1447, y: 2305 },
-    { x: 1774, y: 2425 },
-    { x: 2107, y: 2343 },
-    { x: 2260, y: 2047 },
-    { x: 2309, y: 1787 },
-    { x: 2521, y: 1630 },
+    // The run down to the mall's tightest corner. The last five points were
+    // nudged outwards to open that corner: it was a 152px radius on a road whose
+    // half width is 160, so the inside edge of the asphalt folded back through
+    // itself at the apex. It is a 181px radius now, which clears the road.
+    { x: 1811, y: 2467 },
+    { x: 2126, y: 2405 },
+    { x: 2264, y: 2112 },
+    { x: 2337, y: 1763 },
+    { x: 2548, y: 1602 },
   ],
   samplesPerSegment: 26,
   finishSampleOffset: 388,
@@ -129,6 +156,9 @@ export const HAWKINS_FOREST: TrackDefinition = {
   worldWidth: 3400,
   worldHeight: 3200,
   roadWidth: 260,
+  // A dirt trail, not a town street: no painted kerb, and a narrow verge.
+  kerbWidth: 4,
+  sidewalkWidth: 20,
   controlPoints: [
     { x: 2984, y: 1600 },
     { x: 2949, y: 1311 },

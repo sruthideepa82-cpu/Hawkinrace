@@ -182,12 +182,19 @@ export class TrackRenderer {
     if (trackId === 'hawkins-streets') drawWaterTower(1400, 900);
 
     // 3. Draw Road
+    //
+    // The band widths come from the layout, not from constants here, because
+    // these are the same numbers the collision and surface code use. The road
+    // you can see is the road you can drive on.
     const leftPoints: Point[] = [];
     const rightPoints: Point[] = [];
     const curbLeftPoints: Point[] = [];
     const curbRightPoints: Point[] = [];
     const sidewalkLeftPoints: Point[] = [];
     const sidewalkRightPoints: Point[] = [];
+
+    const kerb = half + layout.kerbWidth;
+    const pavement = kerb + layout.sidewalkWidth;
 
     const numPoints = centerline.length;
     for (let i = 0; i < numPoints; i++) {
@@ -202,12 +209,11 @@ export class TrackRenderer {
       leftPoints.push({ x: p.x + nx * half, y: p.y + ny * half });
       rightPoints.push({ x: p.x - nx * half, y: p.y - ny * half });
       
-      curbLeftPoints.push({ x: p.x + nx * (half + 8), y: p.y + ny * (half + 8) });
-      curbRightPoints.push({ x: p.x - nx * (half + 8), y: p.y - ny * (half + 8) });
-      
-      const swW = trackId === 'hawkins-forest' ? 20 : 40;
-      sidewalkLeftPoints.push({ x: p.x + nx * (half + swW), y: p.y + ny * (half + swW) });
-      sidewalkRightPoints.push({ x: p.x - nx * (half + swW), y: p.y - ny * (half + swW) });
+      curbLeftPoints.push({ x: p.x + nx * kerb, y: p.y + ny * kerb });
+      curbRightPoints.push({ x: p.x - nx * kerb, y: p.y - ny * kerb });
+
+      sidewalkLeftPoints.push({ x: p.x + nx * pavement, y: p.y + ny * pavement });
+      sidewalkRightPoints.push({ x: p.x - nx * pavement, y: p.y - ny * pavement });
     }
 
     const drawPoly = (leftSide: Point[], rightSide: Point[], color: number, alpha: number = 1.0) => {

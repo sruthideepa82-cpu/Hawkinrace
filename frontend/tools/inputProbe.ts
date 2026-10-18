@@ -199,7 +199,7 @@ function keyEvent(type: 'keydown' | 'keyup', code: string, keyCode: number): any
 const CODES: Record<string, number> = {
   W: 87, A: 65, S: 83, D: 68,
   UP: 38, LEFT: 37, DOWN: 40, RIGHT: 39,
-  SHIFT: 16, SPACE: 32, R: 82, C: 67, V: 86,
+  SHIFT: 16, SPACE: 32, R: 82, C: 67, V: 86, P: 80, B: 66, F: 70, E: 69,
 };
 
 // ------------------------------------------------------------------ the test
@@ -285,7 +285,7 @@ function check(label: string, ok: boolean, detail = '') {
 
 console.log('\n[input] WASD and arrow keys both drive the car');
 
-const NEUTRAL = { accelerate: false, brake: false, steer: 0, nitro: false };
+const NEUTRAL = { accelerate: false, brake: false, steer: 0, nitro: false, ability: false };
 
 for (const [name, letter, arrow] of [
   ['accelerate', 'W', 'UP'],
@@ -347,6 +347,30 @@ press('C');
 check('C registers as a camera press', controller.cameraPressed() === true);
 check('C only counts on the frame it is pressed', controller.cameraPressed() === false);
 release('C');
+
+// The pause key, and the release it has to force.
+console.log('\n[input] pause is a key, and pausing drops the controls');
+press('P');
+check('P registers as a pause press', controller.pausePressed() === true);
+check('P only counts on the frame it is pressed', controller.pausePressed() === false);
+release('P');
+
+press('W');
+check('the throttle is held before the pause', state().accelerate === true);
+controller.release();
+check('releasing the controls drops a held key', state().accelerate === false,
+  JSON.stringify(state()));
+release('W');
+
+press('B');
+check('B registers as the collision debug toggle', controller.debugPressed() === true);
+check('B only counts on the frame it is pressed', controller.debugPressed() === false);
+release('B');
+
+press('F');
+check('F activates the ability', state().ability === true, JSON.stringify(state()));
+release('F');
+check('releasing F drops the ability', state().ability === false);
 
 // Every advertised binding must actually be captured, or the browser scrolls the
 // page instead of steering.

@@ -32,6 +32,18 @@ export class HudScene extends Phaser.Scene {
   private trackOrigin = { x: 0, y: 0 };
   private viewLabel!: Phaser.GameObjects.Text;
 
+  /** The "LAP COMPLETE" card, shown after lap 1 and lap 2. */
+  private lapCard!: Phaser.GameObjects.Container;
+  private lapCardTitle!: Phaser.GameObjects.Text;
+  private lapCardTime!: Phaser.GameObjects.Text;
+  private lapCardPosition!: Phaser.GameObjects.Text;
+  private lapCardRemaining!: Phaser.GameObjects.Text;
+  private lapCardUp = false;
+
+  /** The pause card. */
+  private pauseCard!: Phaser.GameObjects.Container;
+  private pauseCardUp = false;
+
   /** Live leaderboard rows, one per car on the grid. */
   private leaderRows: { name: Phaser.GameObjects.Text; pos: Phaser.GameObjects.Text; chip: Phaser.GameObjects.Rectangle }[] = [];
 
@@ -136,6 +148,11 @@ export class HudScene extends Phaser.Scene {
     this.bannerTime = this.add.text(0, 40, '', { fontFamily: FONTS.mono, fontSize: '32px', color: '#ffffff' }).setOrigin(0.5);
     this.banner = this.add.container(width / 2, height / 2, [this.bannerTitle, this.bannerTime]).setVisible(false);
 
+    // Lap card and pause card. Both are built once and faded in and out, in the
+    // same panel style as the leaderboard so they read as part of this HUD.
+    this.buildLapCard();
+    this.buildPauseCard();
+
     this.trackIntroOverlay = new TrackIntroOverlay(this, this.bridge);
 
     // Hide HUD initially
@@ -209,10 +226,85 @@ export class HudScene extends Phaser.Scene {
     }
   }
 
+  /**
+   * The card shown after lap 1 and lap 2.
+   *
+   * It reports the lap that was actually driven, the player's real position on
+   * the road and how many laps are left, and it never blocks input: the race
+   * keeps running underneath it, so the car keeps its place and the clock keeps
+   * counting. The final lap does not use it -- that goes to the results screen.
+   */
+  private buildLapCard(): void {
+    const { width, height } = GAME;
+    const panelWidth = 420;
+    const panelHeight = 176;
+    const cx = width / 2;
+    // Below the car, which the chase camera pins just under the screen centre.
+    const cy = height / 2 + 128;
+
+    const bg = this.add.rectangle(cx, cy, panelWidth, panelHeight, 0x000000, 0.72).setStrokeStyle(2, 0xff2e63);
+    this.lapCardTitle = this.add.text(cx, cy - 58, 'LAP COMPLETE', {
+      fontFamily: FONTS.display, fontSize: '34px', color: RED,
+    }).setOrigin(0.5);
+    this.lapCardTime = this.add.text(cx, cy - 8, '', {
+      fontFamily: FONTS.mono, fontSize: '30px', color: '#ffffff',
+    }).setOrigin(0.5);
+    this.lapCardPosition = this.add.text(cx, cy + 30, '', {
+      fontFamily: FONTS.mono, fontSize: '17px', color: '#b8a6ff',
+    }).setOrigin(0.5);
+    this.lapCardRemaining = this.add.text(cx, cy + 60, '', {
+      fontFamily: FONTS.display, fontSize: '20px', color: '#ffffff',
+    }).setOrigin(0.5);
+
+    this.lapCard = this.add
+      .container(cx, cy, [bg, this.lapCardTitle, this.lapCardTime, this.lapCardPosition, this.lapCardRemaining])
+      .setAlpha(0)
+      .setVisible(false);
+  }
+
+  /** The pause card. Everything else stays put behind it. */
+  private buildPauseCard(): void {
+    const { width, height } = GAME;
+    const cx = width / 2;
+    const cy = height / 2;
+
+    const bg = this.add.rectangle(cx, cy, 360, 132, 0x000000, 0.78).setStrokeStyle(2, 0xffffff);
+    const title = this.add.text(cx, cy - 24, 'PAUSED', {
+      fontFamily: FONTS.display, fontSize: '52px', color: '#ffffff',
+    }).setOrigin(0.5);
+    const hint = this.add.text(cx, cy + 30, 'P RESUME  ·  R RESTART  ·  ESC QUIT', {
+      fontFamily: FONTS.mono, fontSize: '15px', color: '#b8a6ff',
+    }).setOrigin(0.5);
+
+    this.pauseCard = this.add.container(cx, cy, [bg, title, hint]).setAlpha(0).setVisible(false);
+  }
+
+  /**
+   * Fades a card in or out, remembering whether it is logically up so a burst
+   * of identical frames cannot restart the tween every frame.
+   */
+  private setCard(container: Phaser.GameObjects.Container, field: 'lapCardUp' | 'pauseCardUp', up: boolean): void {
+    if (this[field] === up) return;
+    this[field] = up;
+    this.tweens.killTweensOf(container);
+    container.setVisible(true);
+    this.tweens.add({
+      targets: container,
+      alpha: up ? 1 : 0,
+      duration: up ? 220 : 320,
+      ease: 'Power2',
+      onComplete: () => { if (!up) container.setVisible(false); },
+    });
+  }
+
   private onUpdate(data: HudPayload): void {
     this.trackIntroOverlay.update(data.introRemainingMs, data.state);
 
     const over = data.state === 'finished' || data.state === 'failed';
+    const paused = data.state === 'paused';
+    // A lap transition is a live race with a card over it, so the HUD keeps
+    // behaving exactly as it does while `racing`.
+    const driving = data.state === 'racing' || data.state === 'lapTransition';
 
     if (data.state !== 'intro' && !over && !this.hudVisible) {
       this.hudVisible = true;
@@ -234,10 +326,13 @@ export class HudScene extends Phaser.Scene {
 
     // A lap banked gets a brief pulse on the counter itself rather than a
     // full-screen notification, and the race never pauses for it.
-    if (data.state === 'racing' && data.playerLap > this.lastLap) {
+    if (driving && data.playerLap > this.lastLap) {
       this.animateLapChange();
     }
     this.lastLap = data.playerLap;
+
+    this.updateLapCard(data);
+    this.setCard(this.pauseCard, 'pauseCardUp', paused && !over);
 
     this.posText.setText(`P${data.playerPosition} / ${data.standings.length}`);
     this.lapText.setText(`LAP ${data.playerLap} / ${data.totalLaps}`);
@@ -276,7 +371,7 @@ export class HudScene extends Phaser.Scene {
       this.centerText.setText(String(Math.ceil(data.countdownRemainingMs / 1000)));
       this.centerText.setColor(RED);
       this.centerText.setStroke('#ffffff', 0);
-    } else if (data.state === 'racing' && data.elapsedMs < 800) {
+    } else if (driving && data.elapsedMs < 800) {
       this.centerText.setText('GO!');
       this.centerText.setColor('#ffffff');
       this.centerText.setStroke(RED, 6);
@@ -287,6 +382,32 @@ export class HudScene extends Phaser.Scene {
     // We no longer show the giant banner in Phaser.
     // The React overlay handles the "RACE COMPLETE" and "YOU FAILED" screens!
     this.banner.setVisible(false);
+  }
+
+  /**
+   * The lap-completed card, driven entirely by what the session actually
+   * recorded: the lap time, the live position over the cars on the grid, and
+   * the laps still to run. Null data hides it, which is what happens after the
+   * final lap, when the results screen takes over instead.
+   */
+  private updateLapCard(data: HudPayload): void {
+    const lap = data.lapTransition;
+    const up = lap !== null && data.state !== 'finished' && data.state !== 'failed';
+    this.setCard(this.lapCard, 'lapCardUp', up);
+    if (!lap) return;
+
+    this.lapCardTitle.setText(
+      lap.completedLap >= lap.totalLaps ? 'FINAL LAP' : 'LAP COMPLETE',
+    );
+    this.lapCardTime.setText(`LAP ${lap.completedLap}  ${formatRaceTime(lap.lapTimeMs)}`);
+    this.lapCardPosition.setText(
+      lap.bestLapMs === null
+        ? `POSITION  P${lap.position} / ${lap.fieldSize}`
+        : `POSITION  P${lap.position} / ${lap.fieldSize}   ·   BEST  ${formatRaceTime(lap.bestLapMs)}`,
+    );
+    this.lapCardRemaining.setText(
+      lap.lapsRemaining <= 1 ? 'FINAL LAP NEXT' : `LAPS REMAINING  ${lap.lapsRemaining}`,
+    );
   }
 
   /**
