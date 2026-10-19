@@ -15,7 +15,8 @@ public record TrackResponse(
 
     public static TrackResponse from(Track track) {
         return new TrackResponse(
-                track.id(), track.name(), track.description(), track.difficulty(),
-                track.weather(), track.environment(), track.laps(), track.locked());
+                track.getId(), track.getName(), track.getDescription(),
+                track.getDifficulty(), track.getWeather(), track.getEnvironment(),
+                track.getLaps(), track.isLocked());
     }
 }

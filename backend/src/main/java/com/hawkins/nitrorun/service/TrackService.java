@@ -3,6 +3,7 @@ package com.hawkins.nitrorun.service;
 import java.util.List;
 
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import com.hawkins.nitrorun.dto.TrackResponse;
 import com.hawkins.nitrorun.exception.ResourceNotFoundException;
@@ -11,6 +12,7 @@ import com.hawkins.nitrorun.repository.TrackRepository;
 
 /** Reads the track catalogue. */
 @Service
+@Transactional(readOnly = true)
 public class TrackService {
 
     private final TrackRepository tracks;
@@ -24,19 +26,16 @@ public class TrackService {
     }
 
     public TrackResponse findById(String id) {
-        Track track = tracks.findById(id)
+        return TrackResponse.from(require(id));
+    }
+
+    /** The entity, for callers that need to reference it rather than return it. */
+    public Track require(String id) {
+        return tracks.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("No track with id '" + id + "'"));
-        return TrackResponse.from(track);
     }
 
     public boolean exists(String id) {
         return id != null && tracks.existsById(id);
-    }
-
-    /** Laps the given track is run over. Used to validate a submitted race. */
-    public int lapsOf(String id) {
-        return tracks.findById(id)
-                .map(Track::laps)
-                .orElseThrow(() -> new ResourceNotFoundException("No track with id '" + id + "'"));
     }
 }

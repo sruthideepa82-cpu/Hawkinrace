@@ -34,6 +34,40 @@
 		</dependency>
 
 		<!--
+			Phase 5: MySQL persistence.
+
+			The application refuses to start without a reachable database. That is
+			the intended trade; a game that silently loses every leaderboard
+			entry on restart is worse than one that refuses to boot.
+
+			Flyway owns the schema. Hibernate is set to `validate`, never
+			`create` or `update`, so the application can never alter production
+			tables behind the migrations' back.
+		-->
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-data-jpa</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>com.mysql</groupId>
+			<artifactId>mysql-connector-j</artifactId>
+			<scope>runtime</scope>
+		</dependency>
+
+		<!--
+			Schema migrations. `flyway-mysql` is a separate module as of Flyway 10;
+			without it Flyway cannot see MySQL at all.
+		-->
+		<dependency>
+			<groupId>org.flywaydb</groupId>
+			<artifactId>flyway-core</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>org.flywaydb</groupId>
+			<artifactId>flyway-mysql</artifactId>
+		</dependency>
+
+		<!--
 			Actuator for health and monitoring. Only the health endpoint is exposed;
 			see `management.endpoints.web.exposure.include` in application.yml.
 			The richer ones (env, beans, configprops) can leak configuration and
@@ -43,13 +77,6 @@
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-starter-actuator</artifactId>
 		</dependency>
-
-		<!--
-			Phase 4 deliberately has NO Spring Data JPA and NO MySQL driver.
-			Persistence, schema and migrations are Phase 5. Repositories are plain
-			interfaces with in-memory implementations, shaped so a JPA
-			implementation can be swapped in without touching the services.
-		-->
 
 		<dependency>
 			<groupId>org.springframework.boot</groupId>

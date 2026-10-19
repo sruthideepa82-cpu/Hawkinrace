@@ -1,21 +1,13 @@
 package com.hawkins.nitrorun.repository;
 
-import java.util.List;
-import java.util.Optional;
+import org.springframework.data.jpa.repository.JpaRepository;
 
 import com.hawkins.nitrorun.model.Track;
 
 /**
- * Read access to the track catalogue.
+ * Track catalogue.
  *
- * <p>Seeded from the frontend's track definitions, so track ids match the game
- * exactly and the API never has to invent an id the client does not know.
+ * <p>Seeded idempotently at startup from the frontend's track definitions.
  */
-public interface TrackRepository {
-
-    List<Track> findAll();
-
-    Optional<Track> findById(String id);
-
-    boolean existsById(String id);
+public interface TrackRepository extends JpaRepository<Track, String> {
 }

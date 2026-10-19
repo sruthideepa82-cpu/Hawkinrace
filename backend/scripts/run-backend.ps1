@@ -1,7 +1,12 @@
 # Starts the Hawkins: Nitro Run backend.
 #
-# No database is required in Phase 4 -- players and race records live in memory
-# and reset on restart. Do not start MySQL for this; that is a Phase 5 step.
+# Requires a running MySQL and valid credentials in .env (copy from
+# .env.example). The application will NOT start without a reachable database:
+# silently losing every leaderboard entry on restart would be worse than
+# refusing to boot.
+#
+# Flyway applies pending migrations on start. Nothing here drops or recreates
+# anything.
 #
 # The project targets Java 21 (see <java.version> in pom.xml). A JDK 17 will
 # NOT work: the compiler is told to target release 21 and refuses.
@@ -16,6 +21,41 @@ $ErrorActionPreference = 'Stop'
 
 $root = Split-Path -Parent $PSScriptRoot
 $minimumMajor = 21
+
+# ---------------------------------------------------------------------------
+# Load .env, if present, into the process environment.
+#
+# .env is gitignored; .env.example is the committed template. Values already
+# present in the environment win, so CI or a shell export overrides the file
+# rather than being silently replaced by it.
+# ---------------------------------------------------------------------------
+$envFile = Join-Path $root '.env'
+if (Test-Path $envFile) {
+    $loaded = 0
+    foreach ($line in (Get-Content $envFile)) {
+        $trimmed = $line.Trim()
+        if (-not $trimmed -or $trimmed.StartsWith('#')) { continue }
+        $eq = $trimmed.IndexOf('=')
+        if ($eq -lt 1) { continue }
+        $name = $trimmed.Substring(0, $eq).Trim()
+        $value = $trimmed.Substring($eq + 1).Trim()
+        if (-not [System.Environment]::GetEnvironmentVariable($name)) {
+            [System.Environment]::SetEnvironmentVariable($name, $value)
+            $loaded++
+        }
+    }
+    Write-Host "Loaded $loaded value(s) from .env"
+} else {
+    Write-Warning "No .env found. Copy .env.example to .env and fill in DB_URL, DB_USERNAME and DB_PASSWORD."
+    Write-Warning "The application will not start without them."
+}
+
+foreach ($required in @('DB_URL', 'DB_USERNAME', 'DB_PASSWORD')) {
+    if (-not [System.Environment]::GetEnvironmentVariable($required)) {
+        Write-Error "Missing $required. The backend needs database credentials to start; see backend\README.md."
+        exit 1
+    }
+}
 
 # Places a Java 21+ JDK is commonly found, most specific first. JAVA_HOME and the
 # bundled Android Studio runtime are checked ahead of these.

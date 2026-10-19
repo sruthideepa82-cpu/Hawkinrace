@@ -1,46 +1,47 @@
 package com.hawkins.nitrorun.service;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import com.hawkins.nitrorun.dto.CreateRaceRequest;
 import com.hawkins.nitrorun.dto.CreateRaceResponse;
 import com.hawkins.nitrorun.dto.RaceRecordResponse;
 import com.hawkins.nitrorun.exception.InvalidRaceResultException;
 import com.hawkins.nitrorun.exception.ResourceNotFoundException;
-import com.hawkins.nitrorun.model.RaceRecord;
+import com.hawkins.nitrorun.model.Car;
+import com.hawkins.nitrorun.model.Player;
+import com.hawkins.nitrorun.model.Race;
+import com.hawkins.nitrorun.model.Track;
 import com.hawkins.nitrorun.repository.PlayerRepository;
-import com.hawkins.nitrorun.repository.RaceRecordRepository;
+import com.hawkins.nitrorun.repository.RaceRepository;
 import com.hawkins.nitrorun.validation.GameId;
 
-import java.time.Instant;
-
 /**
- * Stores and reads completed race records.
- *
- * <p><b>Records are lost on restart.</b> Phase 5 makes this durable.
+ * Stores and reads completed race records. Durable since Phase 5.
  *
  * <p>What this service is responsible for is making a submitted race
  * <em>possible</em>, not just well-shaped. The DTO catches a negative time or a
- * zero position on the way in; this catches the contradictions that survive that:
- * a lap time longer than the whole race, more laps than the track has, or an id
- * for a car or track that does not exist. Those are checked here because they
- * need the catalogue, which validation annotations cannot see.
+ * zero position on the way in; this catches the contradictions that survive
+ * that, and the schema enforces the rest with CHECK and foreign keys.
  *
- * <p><b>None of this is authentication.</b> A caller can submit any race for any
- * player. That is inherent to Phase 4 and is called out in the README.
+ * <p><b>None of this is authentication.</b> A caller can submit any race for
+ * any player, and the times are taken at face value. That is inherent to the
+ * game being single-player and offline.
  */
 @Service
+@Transactional(readOnly = true)
 public class RaceService {
 
-    private final RaceRecordRepository races;
+    private final RaceRepository races;
     private final PlayerRepository players;
     private final CarService cars;
     private final TrackService tracks;
 
-    public RaceService(RaceRecordRepository races, PlayerRepository players, CarService cars, TrackService tracks) {
+    public RaceService(RaceRepository races, PlayerRepository players, CarService cars, TrackService tracks) {
         this.races = races;
         this.players = players;
         this.cars = cars;
@@ -48,13 +49,13 @@ public class RaceService {
     }
 
     public List<RaceRecordResponse> findAll() {
-        return races.findAll().stream().map(RaceRecordResponse::from).toList();
+        return races.findAllByOrderByCompletedAtDescSeqDesc().stream()
+                .map(RaceRecordResponse::from)
+                .toList();
     }
 
     public RaceRecordResponse findById(String id) {
-        return races.findAll().stream()
-                .filter(r -> r.id().equals(id))
-                .findFirst()
+        return races.findById(id)
                 .map(RaceRecordResponse::from)
                 .orElseThrow(() -> new ResourceNotFoundException("No race record with id '" + id + "'"));
     }
@@ -62,22 +63,31 @@ public class RaceService {
     /**
      * Validates and stores one completed race.
      *
+     * <p>Reads the referenced Player, Car and Track as managed entities inside
+     * the write transaction, so Hibernate issues three cheap primary-key
+     * lookups and then a single INSERT with the foreign keys filled in.
+     *
      * @throws ResourceNotFoundException   if the player, car or track is unknown.
      * @throws InvalidRaceResultException if the numbers contradict each other or
      *         the track.
      */
+    @Transactional
     public CreateRaceResponse save(CreateRaceRequest request) {
         // Referenced ids must exist. 404 rather than 400: the request was
         // well-formed, it just points at something that is not there.
-        if (!players.existsById(request.playerId())) {
-            throw new ResourceNotFoundException("No player with id '" + request.playerId() + "'");
-        }
-        if (!GameId.isWellFormed(request.carId()) || !cars.exists(request.carId())) {
+        Player player = players.findById(request.playerId())
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "No player with id '" + request.playerId() + "'"));
+
+        if (!GameId.isWellFormed(request.carId())) {
             throw new ResourceNotFoundException("No car with id '" + request.carId() + "'");
         }
-        if (!GameId.isWellFormed(request.trackId()) || !tracks.exists(request.trackId())) {
+        Car car = cars.require(request.carId());
+
+        if (!GameId.isWellFormed(request.trackId())) {
             throw new ResourceNotFoundException("No track with id '" + request.trackId() + "'");
         }
+        Track track = tracks.require(request.trackId());
 
         // A lap cannot be slower than the whole race it sits inside.
         if (request.bestLapTimeMs() != null && request.bestLapTimeMs() > request.elapsedTimeMs()) {
@@ -86,9 +96,7 @@ public class RaceService {
                             + ") cannot be greater than elapsedTimeMs (" + request.elapsedTimeMs() + ")");
         }
 
-        // Cannot have run more laps than the track has, even by a failed race that
-        // was abandoned part-way through a lap.
-        int lapsOnTrack = tracks.lapsOf(request.trackId());
+        int lapsOnTrack = track.getLaps();
         if (request.lapsCompleted() > lapsOnTrack) {
             throw new InvalidRaceResultException(
                     "lapsCompleted (" + request.lapsCompleted() + ") exceeds the "
@@ -101,17 +109,22 @@ public class RaceService {
                     "a bestLapTimeMs cannot be reported when no laps were completed");
         }
 
-        RaceRecord record = new RaceRecord(
-                "race_" + UUID.randomUUID().toString().substring(0, 8),
-                request.playerId(),
-                request.carId(),
-                request.trackId(),
+        Race record = new Race(
+                newId(),
+                player,
+                car,
+                track,
                 request.position(),
                 request.lapsCompleted(),
+                lapsOnTrack,
                 request.elapsedTimeMs(),
                 request.bestLapTimeMs(),
                 Instant.now());
 
-        return CreateRaceResponse.saved(races.append(record));
+        return CreateRaceResponse.saved(races.save(record));
+    }
+
+    private static String newId() {
+        return "race_" + UUID.randomUUID().toString().substring(0, 8);
     }
 }

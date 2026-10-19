@@ -8,6 +8,13 @@ nitrorun:
   cors:
     allowed-origins: ${CORS_ALLOWED_ORIGINS:}
 
+spring:
+  jpa:
+    show-sql: false
+  flyway:
+    # A production deploy applies pending migrations on start. There is no
+    # `clean` anywhere in this configuration, and never will be.
+
 server:
   error:
     include-stacktrace: never

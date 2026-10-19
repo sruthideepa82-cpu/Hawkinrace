@@ -5,6 +5,7 @@ import java.util.Map;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
@@ -50,6 +51,29 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(DuplicateResourceException.class)
     public ResponseEntity<ApiError> handleDuplicate(DuplicateResourceException ex, HttpServletRequest request) {
         return build(HttpStatus.CONFLICT, ex.getMessage(), request);
+    }
+
+    /**
+     * 409: a database constraint rejected a write.
+     *
+     * <p>Since Phase 5 the schema carries the real rules -- UNIQUE on the
+     * display name, foreign keys on the race references, CHECK constraints on
+     * the numbers. When one of those fires it arrives here as a
+     * {@code DataIntegrityViolationException}, and without this handler it would
+     * fall through to the catch-all and be reported as a 500, telling a client
+     * the server broke when in fact it was enforcing what it promised.
+     *
+     * <p>The message is deliberately fixed. Hibernate's exception text quotes the
+     * offending SQL, the constraint name and frequently the row values; a
+     * duplicate-name rejection should say that the name is taken, not print the
+     * INSERT statement.
+     */
+    @ExceptionHandler(DataIntegrityViolationException.class)
+    public ResponseEntity<ApiError> handleConstraintViolation(DataIntegrityViolationException ex,
+                                                              HttpServletRequest request) {
+        log.debug("Constraint violation on {}", request.getRequestURI(), ex);
+        return build(HttpStatus.CONFLICT,
+                "The request conflicts with existing data", request);
     }
 
     /** 400: a JSON body failed field validation. */

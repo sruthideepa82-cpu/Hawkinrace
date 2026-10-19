@@ -1,6 +1,6 @@
 package com.hawkins.nitrorun.dto;
 
-import com.hawkins.nitrorun.model.RaceRecord;
+import com.hawkins.nitrorun.model.Race;
 
 /**
  * A stored race record.
@@ -8,6 +8,9 @@ import com.hawkins.nitrorun.model.RaceRecord;
  * <p>The car and track ids are echoed back rather than their display names, so a
  * client can join against {@code GET /api/cars} and {@code GET /api/tracks}
  * without any name matching.
+ *
+ * <p>Unchanged from Phase 4 in shape. Persistence arrived without altering the
+ * contract.
  */
 public record RaceRecordResponse(
         String id,
@@ -20,10 +23,19 @@ public record RaceRecordResponse(
         Long bestLapTimeMs,
         String completedAt) {
 
-    public static RaceRecordResponse from(RaceRecord record) {
+    /**
+     * Reads the related ids off their lazy proxies, which costs no query.
+     */
+    public static RaceRecordResponse from(Race race) {
         return new RaceRecordResponse(
-                record.id(), record.playerId(), record.carId(), record.trackId(),
-                record.position(), record.lapsCompleted(), record.elapsedTimeMs(),
-                record.bestLapTimeMs(), record.completedAt().toString());
+                race.getId(),
+                race.getPlayer().getId(),
+                race.getCar().getId(),
+                race.getTrack().getId(),
+                race.getFinishingPosition(),
+                race.getLapsCompleted(),
+                race.getElapsedTimeMs(),
+                race.getBestLapTimeMs(),
+                race.getCompletedAt().toString());
     }
 }

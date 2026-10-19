@@ -31,3 +31,10 @@ build/
 
 ### VS Code ###
 .vscode/
+
+### Local secrets ###
+# Real database credentials live here. Only .env.example is committed.
+.env
+.env.local
+*.env
+!.env.example

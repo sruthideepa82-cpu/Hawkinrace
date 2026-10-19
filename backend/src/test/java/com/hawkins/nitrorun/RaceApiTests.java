@@ -7,6 +7,8 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import java.util.Map;
+
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.MediaType;
@@ -207,16 +209,26 @@ class RaceApiTests extends ApiTestSupport {
     }
 
     @Test
-    @DisplayName("records really are in memory: they reset when the store is cleared")
-    void recordsResetOnRestart() throws Exception {
-        String playerId = createPlayer("Ephemeral");
-        createRace(playerId, 150_000, 1);
-        assertEquals(1, bodyOf(mvc.perform(get("/api/races"))).size());
+    @DisplayName("a stored race really is a row in MySQL")
+    void recordsReachTheDatabase() throws Exception {
+        String playerId = createPlayer("Persisted");
+        String raceId = createRace(playerId, 150_000, 1);
 
-        // A restart would drop the bean entirely; clearing is the same effect and
-        // is what makes this assertion cheap.
-        resetStores();
+        // Read it back out of the database directly, not through the API, so a
+        // service that kept everything in a field would fail this.
+        Map<String, Object> row = jdbc.queryForMap(
+                "SELECT player_id, car_id, track_id, finishing_position, "
+                        + "laps_completed, total_laps, elapsed_time_ms "
+                        + "FROM races WHERE id = ?", raceId);
 
-        assertEquals(0, bodyOf(mvc.perform(get("/api/races"))).size());
+        assertEquals(playerId, row.get("player_id"));
+        assertEquals("apex-vulcan", row.get("car_id"));
+        assertEquals("hawkins-streets", row.get("track_id"));
+        assertEquals(1, ((Number) row.get("finishing_position")).intValue());
+        assertEquals(3, ((Number) row.get("laps_completed")).intValue());
+        // total_laps is copied from the track at write time, so the record keeps
+        // the distance it was actually set over.
+        assertEquals(3, ((Number) row.get("total_laps")).intValue());
+        assertEquals(150_000L, ((Number) row.get("elapsed_time_ms")).longValue());
     }
 }

@@ -1,0 +1,53 @@
+# ---------------------------------------------------------------------------
+# Test profile (`--spring.profiles.active=test`, set by @ActiveProfiles).
+#
+# Tests run against a REAL MySQL, not an in-memory or H2 substitute. That is a
+# deliberate choice: Docker is not available on this machine, so Testcontainers
+# is out, and a real MySQL tests the real thing anyway -- real foreign keys,
+# real CHECK constraints, real utf8mb4, real window functions in the leaderboard
+# query. An in-memory database would pass while hiding exactly the dialect
+# differences most likely to break in production.
+#
+# The test schema name is written out literally below and can never be the
+# development database by accident. Credentials come from the environment:
+# DB_TEST_* if set, otherwise the usual DB_USERNAME / DB_PASSWORD.
+#
+# Flyway runs here too, so the migrations are exercised on every test run.
+# ---------------------------------------------------------------------------
+spring:
+  main:
+    banner-mode: off
+
+  datasource:
+    url: ${DB_TEST_URL:jdbc:mysql://127.0.0.1:3306/hawkins_nitro_run_test?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC}
+    username: ${DB_TEST_USERNAME:${DB_USERNAME:}}
+    password: ${DB_TEST_PASSWORD:${DB_PASSWORD:}}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    hikari:
+      pool-name: nitro-run-test-pool
+      maximum-pool-size: 4
+
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: UTC
+        # Counting statements is what lets QueryCountTests prove there is no N+1.
+        generate_statistics: true
+
+  flyway:
+    enabled: true
+    clean-disabled: true
+
+nitrorun:
+  cors:
+    allowed-origins: ""
+
+logging:
+  level:
+    root: WARN
+    com.hawkins.nitrorun: WARN
+    org.flywaydb: WARN

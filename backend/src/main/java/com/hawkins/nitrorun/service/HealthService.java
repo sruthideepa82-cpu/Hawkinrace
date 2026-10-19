@@ -4,29 +4,32 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import com.hawkins.nitrorun.dto.HealthResponse;
-import com.hawkins.nitrorun.repository.RaceRecordRepository;
+import com.hawkins.nitrorun.repository.RaceRepository;
 
 /**
  * Reports backend status.
  *
- * <p>The point of this service is the honesty in the response: it states the
- * storage backend and that {@code persistent} is false. A bare
- * {@code 200 OK} from a health check is easy to mistake for "your data is safe",
- * and in Phase 4 it very much is not.
+ * <p>Since Phase 5 this reports a real, durable database, so {@code persistent}
+ * is now true. That flag flipped only when the storage genuinely became durable,
+ * and it is driven by configuration rather than hardcoded, so a misconfigured
+ * deployment cannot claim durability it does not have.
  */
 @Service
 public class HealthService {
 
-    private final RaceRecordRepository races;
+    private final RaceRepository races;
     private final String version;
     private final String storage;
+    private final boolean persistent;
 
-    public HealthService(RaceRecordRepository races,
+    public HealthService(RaceRepository races,
                          @Value("${nitrorun.version:0.0.0}") String version,
-                         @Value("${nitrorun.storage:memory}") String storage) {
+                         @Value("${nitrorun.storage:unknown}") String storage,
+                         @Value("${nitrorun.persistent:false}") boolean persistent) {
         this.races = races;
         this.version = version;
         this.storage = storage;
+        this.persistent = persistent;
     }
 
     public HealthResponse status() {
@@ -35,12 +38,13 @@ public class HealthService {
                 "nitro-run",
                 version,
                 storage,
-                false,
-                "In-memory storage: players and race records reset on restart. "
-                        + "Player-submitted races are NOT authenticated.");
+                persistent,
+                persistent
+                        ? "MySQL-backed storage. Player-submitted races are still NOT authenticated."
+                        : "NON-DURABLE storage: data resets on restart. Player-submitted races are NOT authenticated.");
     }
 
-    /** Record count, handy for confirming persistence really did reset. */
+    /** Record count, handy for confirming persistence really did survive. */
     public long raceCount() {
         return races.count();
     }

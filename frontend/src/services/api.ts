@@ -29,9 +29,9 @@ export interface BackendHealth {
   status: string;
   application: string;
   version: string;
-  /** "memory" in Phase 4. Data is lost on restart. */
+  /** "memory" before Phase 5, "mysql" after. */
   storage: string;
-  /** Always false in Phase 4 -- see the backend README before trusting records. */
+  /** True since Phase 5. Says nothing about whether the data is trustworthy. */
   persistent: boolean;
   message: string;
 }
@@ -232,8 +232,12 @@ function query(params: Record<string, string | number | undefined>): string {
 /**
  * Backend status.
  *
- * Worth calling before showing anything about persisted data: `persistent` is
- * false in Phase 4, so the UI should not imply a saved time will survive.
+ * Worth calling before implying anything about durability. Since Phase 5 the
+ * backend is MySQL-backed and reports `persistent: true`.
+ *
+ * That flag describes *storage*, not *trust*: race records are still submitted
+ * by an unauthenticated client and are not verified, so `persistent` must never
+ * be read as "these times are real".
  */
 export function getHealth(): Promise<BackendHealth> {
   return request<BackendHealth>('/api/health');

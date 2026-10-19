@@ -35,13 +35,24 @@ class HealthAndCatalogueApiTests extends ApiTestSupport {
     }
 
     @Test
-    @DisplayName("health is explicit that storage is NOT persistent")
-    void healthIsHonestAboutDurability() throws Exception {
+    @DisplayName("health now reports a durable MySQL store")
+    void healthReportsDurableStorage() throws Exception {
         JsonNode health = bodyOf(mvc.perform(get("/api/health")).andExpect(status().isOk()));
 
-        assertEquals("memory", health.get("storage").asText());
-        assertFalse(health.get("persistent").asBoolean(),
-                "Phase 4 must not claim durability it does not have");
+        assertEquals("mysql", health.get("storage").asText());
+        assertTrue(health.get("persistent").asBoolean(),
+                "Phase 5 storage is durable and must say so");
+    }
+
+    @Test
+    @DisplayName("health still warns that submitted races are not authenticated")
+    void healthDoesNotOverclaimTrust() throws Exception {
+        JsonNode health = bodyOf(mvc.perform(get("/api/health")).andExpect(status().isOk()));
+        String message = health.get("message").asText().toLowerCase();
+
+        // Durable storage did not make the data trustworthy. Auth is still a
+        // later phase, and the health endpoint must not imply otherwise.
+        assertTrue(message.contains("not authenticated"), message);
     }
 
     @Test
@@ -53,6 +64,15 @@ class HealthAndCatalogueApiTests extends ApiTestSupport {
                 .andExpect(jsonPath("$.status").value("UP"))
                 // `show-details: never` means no disk/memory figures leak.
                 .andExpect(jsonPath("$.components").doesNotExist());
+    }
+
+    @Test
+    @DisplayName("Actuator does not expose configuration")
+    void actuatorDoesNotExposeEnv() throws Exception {
+        // Would reveal the JDBC URL and, in some setups, credentials.
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                        .get("/actuator/env"))
+                .andExpect(status().isNotFound());
     }
 
     @Test
@@ -125,6 +145,24 @@ class HealthAndCatalogueApiTests extends ApiTestSupport {
                     "track payload should not reference '" + name + "'");
             assertFalse(cars.toLowerCase().contains(name),
                     "car payload should not reference '" + name + "'");
+        }
+    }
+
+    @Test
+    @DisplayName("the catalogue comes from the database, not a hardcoded list")
+    void catalogueIsServedFromTheDatabase() throws Exception {
+        // Proves the API is genuinely reading rows rather than returning
+        // constants from the seeder class.
+        Integer rows = jdbc.queryForObject("SELECT COUNT(*) FROM cars", Integer.class);
+        assertEquals(4, rows);
+
+        jdbc.update("UPDATE cars SET name = 'RENAMED GT' WHERE id = 'shadow-gt'");
+        try {
+            mvc.perform(get("/api/cars/shadow-gt"))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.name").value("RENAMED GT"));
+        } finally {
+            jdbc.update("UPDATE cars SET name = 'SHADOW GT' WHERE id = 'shadow-gt'");
         }
     }
 }

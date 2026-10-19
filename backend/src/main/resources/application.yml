@@ -1,45 +1,86 @@
 # ---------------------------------------------------------------------------
-# HAWKINS: NITRO RUN - backend
+# HAWKINS: NITRO RUN - backend (Phase 5: MySQL)
 #
-# Base configuration. Everything environment-specific is overridable so the same
-# jar runs locally, in CI and in production without editing this file.
-#
-# Phase 4 has NO database. Players and race records live in memory and reset
-# when the process restarts. That is deliberate: persistence is Phase 5.
+# Credentials are NEVER stored here. They come from the environment:
+#   DB_URL, DB_USERNAME, DB_PASSWORD
+# See .env.example for the template and scripts/run-backend.ps1, which loads a
+# gitignored .env for local development.
 # ---------------------------------------------------------------------------
 spring:
   application:
     name: nitro-run
 
+  datasource:
+    url: ${DB_URL:}
+    username: ${DB_USERNAME:}
+    password: ${DB_PASSWORD:}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    hikari:
+      pool-name: nitro-run-pool
+      maximum-pool-size: 10
+      # Fail fast instead of hanging at startup when MySQL is not up.
+      connection-timeout: 10000
+      validation-timeout: 3000
+      initialization-fail-timeout: 1
+
+  jpa:
+    hibernate:
+      # validate, NEVER create/update.
+      #
+      # `create` and `update` let Hibernate mutate production tables behind
+      # Flyway's back, which is how schemas silently drift from their
+      # migrations. `validate` refuses to start if the schema does not match
+      # what the migrations and entities expect -- a loud failure instead.
+      ddl-auto: validate
+    open-in-view: false
+    show-sql: false
+    properties:
+      hibernate:
+        jdbc:
+          # Store and compare instants in UTC so the server's local timezone
+          # cannot shift recorded race times.
+          time_zone: UTC
+        order_inserts: true
+        order_updates: true
+    database-platform: org.hibernate.dialect.MySQLDialect
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    # The schema is created from migrations alone. Baselining would silently
+    # adopt whatever schema happens to exist, which is how stale tables survive.
+    baseline-on-migrate: false
+    validate-on-migrate: true
+    # Never repair automatically in production: a checksum mismatch means the
+    # migration was edited after being applied, and that needs a human.
+    repair-on-migrate: false
+
 server:
   port: ${SERVER_PORT:8080}
   error:
-    # Never return a stack trace or the exception message from the container.
-    # All error bodies are produced by GlobalExceptionHandler instead.
     include-stacktrace: never
     include-message: never
     include-binding-errors: never
 
 nitrorun:
-  version: ${APP_VERSION:0.4.0-phase4}
-  # Storage backend. `memory` is the only one that exists in Phase 4; the value
-  # is surfaced by /api/health so it is obvious the data is not durable.
-  storage: memory
+  version: ${APP_VERSION:0.5.0-phase5}
+  storage: mysql
+  persistent: true
   cors:
-    # Overridable as a comma-separated list. The dev profile sets the Vite
-    # defaults; production sets its own.
     allowed-origins: ${CORS_ALLOWED_ORIGINS:}
 
 management:
   endpoints:
     web:
       exposure:
-        # health only. `env`, `beans`, `configprops`, `heapdump` and friends
-        # would expose configuration and are deliberately not published.
         include: health,info
   endpoint:
     health:
       show-details: never
+    db:
+      # The DB health indicator must not echo a connection URL, which can
+      # contain credentials when a URL carries them.
+      enabled: true
   info:
     env:
       enabled: true
@@ -47,8 +88,10 @@ management:
 info:
   app:
     name: Hawkins Nitro Run API
-    phase: "4 - REST API, in-memory storage"
+    phase: "5 - MySQL persistence"
 
 logging:
   level:
     com.hawkins.nitrorun: INFO
+    org.hibernate.SQL: WARN
+    org.flywaydb: INFO

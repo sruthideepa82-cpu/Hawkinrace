@@ -1,9 +1,9 @@
 package com.hawkins.nitrorun.service;
 
 import java.util.List;
-import java.util.Locale;
 
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import com.hawkins.nitrorun.dto.CarResponse;
 import com.hawkins.nitrorun.exception.ResourceNotFoundException;
@@ -12,6 +12,7 @@ import com.hawkins.nitrorun.repository.CarRepository;
 
 /** Reads the car catalogue. */
 @Service
+@Transactional(readOnly = true)
 public class CarService {
 
     private final CarRepository cars;
@@ -30,13 +31,16 @@ public class CarService {
      *         resource, not a malformed request.
      */
     public CarResponse findById(String id) {
-        Car car = cars.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("No car with id '" + id + "'"));
-        return CarResponse.from(car);
+        return CarResponse.from(require(id));
     }
 
-    /** True when the id is a real car. Used to validate a submitted race. */
+    /** The entity, for callers that need to reference it rather than return it. */
+    public Car require(String id) {
+        return cars.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("No car with id '" + id + "'"));
+    }
+
     public boolean exists(String id) {
-        return id != null && cars.existsById(id.toLowerCase(Locale.ROOT));
+        return id != null && cars.existsById(id);
     }
 }
