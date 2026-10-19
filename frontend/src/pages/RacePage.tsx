@@ -67,9 +67,12 @@ export function RacePage({ showResults = false }: { showResults?: boolean }) {
         // logged rather than shown. Failed races are not recorded.
         if (result.outcome === 'finished') {
           void saveCompletedRace({
+            // Ids, not names: these are the same literals the backend uses, so
+            // the save needs no name matching.
+            characterId: character.id,
             characterName: character.name,
-            carName: car.name,
-            trackName: track.name,
+            carId: car.id,
+            trackId: track.id,
             totalTimeMs: result.timeMs,
             bestLapTimeMs: result.playerBestLapMs,
             position: result.playerPosition,

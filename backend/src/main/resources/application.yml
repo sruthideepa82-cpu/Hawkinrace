@@ -1,0 +1,54 @@
+# ---------------------------------------------------------------------------
+# HAWKINS: NITRO RUN - backend
+#
+# Base configuration. Everything environment-specific is overridable so the same
+# jar runs locally, in CI and in production without editing this file.
+#
+# Phase 4 has NO database. Players and race records live in memory and reset
+# when the process restarts. That is deliberate: persistence is Phase 5.
+# ---------------------------------------------------------------------------
+spring:
+  application:
+    name: nitro-run
+
+server:
+  port: ${SERVER_PORT:8080}
+  error:
+    # Never return a stack trace or the exception message from the container.
+    # All error bodies are produced by GlobalExceptionHandler instead.
+    include-stacktrace: never
+    include-message: never
+    include-binding-errors: never
+
+nitrorun:
+  version: ${APP_VERSION:0.4.0-phase4}
+  # Storage backend. `memory` is the only one that exists in Phase 4; the value
+  # is surfaced by /api/health so it is obvious the data is not durable.
+  storage: memory
+  cors:
+    # Overridable as a comma-separated list. The dev profile sets the Vite
+    # defaults; production sets its own.
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        # health only. `env`, `beans`, `configprops`, `heapdump` and friends
+        # would expose configuration and are deliberately not published.
+        include: health,info
+  endpoint:
+    health:
+      show-details: never
+  info:
+    env:
+      enabled: true
+
+info:
+  app:
+    name: Hawkins Nitro Run API
+    phase: "4 - REST API, in-memory storage"
+
+logging:
+  level:
+    com.hawkins.nitrorun: INFO

@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+	<modelVersion>4.0.0</modelVersion>
+	<parent>
+		<groupId>org.springframework.boot</groupId>
+		<artifactId>spring-boot-starter-parent</artifactId>
+		<version>3.5.3</version>
+		<relativePath/> <!-- lookup parent from repository -->
+	</parent>
+	<groupId>com.hawkins</groupId>
+	<artifactId>nitro-run</artifactId>
+	<version>0.0.1-SNAPSHOT</version>
+	<name>nitro-run</name>
+	<description>Hawkins Nitro Run backend</description>
+
+	<properties>
+		<!--
+			Java 21. Spring Boot 3.5 supports 17..24, and 21 is an LTS release, so
+			this is the version to target rather than the 17 floor.
+		-->
+		<java.version>21</java.version>
+		<project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+	</properties>
+
+	<dependencies>
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-web</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-validation</artifactId>
+		</dependency>
+
+		<!--
+			Actuator for health and monitoring. Only the health endpoint is exposed;
+			see `management.endpoints.web.exposure.include` in application.yml.
+			The richer ones (env, beans, configprops) can leak configuration and
+			so stay closed in every profile.
+		-->
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-actuator</artifactId>
+		</dependency>
+
+		<!--
+			Phase 4 deliberately has NO Spring Data JPA and NO MySQL driver.
+			Persistence, schema and migrations are Phase 5. Repositories are plain
+			interfaces with in-memory implementations, shaped so a JPA
+			implementation can be swapped in without touching the services.
+		-->
+
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-test</artifactId>
+			<scope>test</scope>
+		</dependency>
+	</dependencies>
+
+	<build>
+		<plugins>
+			<plugin>
+				<groupId>org.springframework.boot</groupId>
+				<artifactId>spring-boot-maven-plugin</artifactId>
+			</plugin>
+		</plugins>
+	</build>
+
+</project>

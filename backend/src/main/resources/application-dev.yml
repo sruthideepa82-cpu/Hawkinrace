@@ -1,0 +1,11 @@
+# Local development. Run with:  mvnw spring-boot:run -Dspring-boot.run.profiles=dev
+#
+# CORS is opened to the Vite dev server on both loopback spellings. 5173 is
+# Vite's default; 5174 is where it lands if 5173 is taken.
+nitrorun:
+  cors:
+    allowed-origins: http://localhost:5173,http://127.0.0.1:5173,http://localhost:5174,http://127.0.0.1:5174
+
+logging:
+  level:
+    com.hawkins.nitrorun: DEBUG

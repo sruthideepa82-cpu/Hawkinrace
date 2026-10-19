@@ -7,12 +7,12 @@ import { useGameStore } from '../store/GameStore';
 import { useKeyPress } from '../hooks/useKeyPress';
 import '../garage.css';
 
-function sameName(a: string, b: string): boolean {
-  return a.trim().toLowerCase() === b.trim().toLowerCase();
-}
-
 /**
  * Overlay live backend stats onto the local car definitions.
+ *
+ * The backend now serves the same car ids the game uses, so records are joined
+ * on `id` -- an exact match that cannot silently fail the way a name comparison
+ * did when a car was renamed.
  *
  * The local id is kept because Phaser tuning is keyed on it; only the values
  * that the backend owns (stats, colour, blurb, unlock flag) are replaced. If
@@ -21,7 +21,7 @@ function sameName(a: string, b: string): boolean {
 function mergeCars(remote: BackendCar[] | undefined): readonly Car[] {
   if (!remote || remote.length === 0) return CARS;
   return CARS.map((local) => {
-    const match = remote.find((r) => sameName(r.name, local.name));
+    const match = remote.find((r) => r.id === local.id);
     if (!match) return local;
     return {
       ...local,

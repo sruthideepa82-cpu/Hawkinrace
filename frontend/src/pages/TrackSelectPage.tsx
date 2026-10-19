@@ -8,14 +8,19 @@ import { useGameStore } from '../store/GameStore';
 import { useKeyPress } from '../hooks/useKeyPress';
 import './track-select.css';
 
-function sameName(a: string, b: string): boolean {
-  return a.trim().toLowerCase() === b.trim().toLowerCase();
-}
-
+/**
+ * Overlay live backend data onto the local track definitions.
+ *
+ * Joined on `id`, which both sides now share.
+ *
+ * `bestTimeMs` is deliberately NOT taken from the backend: a best time belongs
+ * to a player, not a track, and the track record has nowhere to put one. The
+ * per-player times live on the leaderboard. The local value is kept as-is.
+ */
 function mergeTracks(remote: BackendTrack[] | undefined): readonly TrackInfo[] {
   if (!remote || remote.length === 0) return TRACKS;
   return TRACKS.map((local) => {
-    const match = remote.find((r) => sameName(r.name, local.name));
+    const match = remote.find((r) => r.id === local.id);
     if (!match) return local;
     return {
       ...local,
@@ -23,7 +28,6 @@ function mergeTracks(remote: BackendTrack[] | undefined): readonly TrackInfo[] {
       difficulty: match.difficulty ?? local.difficulty,
       weather: match.weather ?? local.weather,
       environment: match.environment ?? local.environment,
-      bestTimeMs: match.bestTimeMs ?? local.bestTimeMs,
     };
   });
 }

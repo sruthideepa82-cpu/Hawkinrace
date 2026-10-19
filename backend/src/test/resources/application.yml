@@ -1,0 +1,14 @@
+# Test profile: no fixed port (0 = ephemeral) so parallel runs cannot collide,
+# and CORS off entirely - MockMvc does not go through CORS filters anyway.
+spring:
+  main:
+    banner-mode: off
+server:
+  port: 0
+nitrorun:
+  cors:
+    allowed-origins: ""
+logging:
+  level:
+    root: WARN
+    com.hawkins.nitrorun: WARN
