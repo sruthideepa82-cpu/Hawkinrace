@@ -1,0 +1,100 @@
+/* ---------------------------------------------------------------------------
+   Sign-in / sign-up.
+
+   Styled from the existing neon-on-dark vocabulary rather than introducing a
+   new one: same border treatment as the rest of the game, same muted tone for
+   secondary copy, same focus colour. It should read as part of the existing UI
+   rather than a bolted-on form.
+   --------------------------------------------------------------------------- */
+.auth-card {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  max-width: 420px;
+  margin: 0 auto;
+  padding: 28px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(0, 0, 0, 0.45);
+}
+
+.auth-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.auth-field span {
+  font-size: 0.72rem;
+  letter-spacing: 0.16em;
+  color: var(--color-muted, #8a8f98);
+}
+
+/* A visible focus ring, not just a colour change: keyboard users need to see
+   where they are, and removing an outline is the classic way to lock them out. */
+.auth-field input {
+  padding: 10px 12px;
+  font: inherit;
+  color: inherit;
+  background: rgba(0, 0, 0, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color-scheme: dark;
+}
+
+.auth-field input:focus-visible {
+  outline: 2px solid var(--color-neon-cyan, #7fe7ff);
+  outline-offset: 2px;
+  border-color: var(--color-neon-cyan, #7fe7ff);
+}
+
+.auth-field input:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.auth-hint {
+  margin: -8px 0 0;
+  font-size: 0.74rem;
+  color: var(--color-muted, #8a8f98);
+}
+
+.auth-error {
+  margin: 0;
+  padding: 8px 12px;
+  border: 1px solid var(--color-neon-pink, #ff5c8a);
+  color: var(--color-neon-pink, #ff5c8a);
+  font-size: 0.82rem;
+}
+
+.auth-submit {
+  padding: 12px 16px;
+  font: inherit;
+  letter-spacing: 0.14em;
+  color: #04140a;
+  background: var(--color-neon-green, #39ff88);
+  border: none;
+  cursor: pointer;
+}
+
+/* A disabled submit must look disabled, not merely be unclickable: "working"
+   with no visual change leaves the user pressing the same button again. */
+.auth-submit:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.auth-submit:focus-visible {
+  outline: 2px solid var(--color-neon-cyan, #7fe7ff);
+  outline-offset: 3px;
+}
+
+.auth-current {
+  margin: 0;
+  font-size: 0.72rem;
+  letter-spacing: 0.16em;
+  color: var(--color-muted, #8a8f98);
+}
+
+.auth-current-name {
+  margin: 4px 0 12px;
+  color: var(--color-neon-green, #39ff88);
+}

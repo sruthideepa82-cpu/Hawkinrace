@@ -21,11 +21,17 @@ import { createServer } from 'node:http';
 import type { Server, IncomingMessage, ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
 
+import { register, logout } from '../src/services/auth';
+
 import {
   ApiRequestError,
   apiBaseUrl,
-  createPlayer,
   getCars,
+  getApiToken,
+  getMe,
+  loginPlayer,
+  logoutPlayer,
+  registerPlayer,
   getHealth,
   getLeaderboard,
   getPlayerRaces,
@@ -64,7 +70,7 @@ function apiError(status: number, message: string, fieldErrors?: Record<string, 
 // ---------------------------------------------------------------------------
 
 /** Requests seen by the stub, so the harness can assert on what was sent. */
-const received: { method: string; url: string; body: string; contentType?: string }[] = [];
+const received: { method: string; url: string; body: string; contentType?: string; authorization?: string }[] = [];
 
 const server: Server = createServer((req: IncomingMessage, res: ServerResponse) => {
   let body = '';
@@ -75,6 +81,7 @@ const server: Server = createServer((req: IncomingMessage, res: ServerResponse) 
       url: req.url ?? '',
       body,
       contentType: req.headers['content-type'],
+      authorization: req.headers['authorization'] as string | undefined,
     });
 
     const send = (status: number, payload: unknown, raw?: string) => {
@@ -114,7 +121,7 @@ const server: Server = createServer((req: IncomingMessage, res: ServerResponse) 
             difficulty: 'EXTREME', weather: 'SPORES', environment: 'CORRUPTED', laps: 3, locked: false },
         ] satisfies BackendTrack[]);
 
-      case '/api/players':
+      case '/api/auth/register':
         if (req.method === 'POST') {
           // Mirrors the backend's real validator: a name under 3 characters is
           // rejected with a per-field message.
@@ -124,14 +131,32 @@ const server: Server = createServer((req: IncomingMessage, res: ServerResponse) 
               displayName: 'must be 3-24 characters: letters, digits, spaces, underscores or hyphens',
             }));
           }
+          // The real register/login response: a bearer token plus the profile.
+          // Shaped exactly like the backend's AuthResponse so a rename on either
+          // side fails here rather than becoming `undefined` at runtime.
           return send(201, {
-            id: 'plr_abc12345',
-            displayName: name,
-            selectedCarId: null,
-            createdAt: '2026-10-19T07:00:00Z',
+            token: 'test-token-' + 'x'.repeat(48),
+            tokenType: 'Bearer',
+            expiresAt: '2026-11-02T07:00:00Z',
+            player: {
+              id: 'plr_abc12345',
+              displayName: name,
+              selectedCarId: null,
+              createdAt: '2026-10-19T07:00:00Z',
+            },
           });
         }
         break;
+
+      case '/api/auth/me':
+        return send(200, {
+          id: 'plr_abc12345', displayName: 'MIKE',
+          selectedCarId: null, createdAt: '2026-10-19T07:00:00Z',
+        });
+
+      case '/api/auth/logout':
+        res.writeHead(204);
+        return res.end();
 
       case '/api/players/plr_abc12345/races':
         return send(200, [
@@ -231,11 +256,25 @@ async function main(): Promise<void> {
   check('GET carries no Content-Type header (avoids a needless CORS preflight)',
     listCall?.contentType === undefined, String(listCall?.contentType));
 
-  await createPlayer({ displayName: 'MIKE' });
-  const postCall = received.find((r) => r.url === '/api/players' && r.method === 'POST');
+  const session = await register({ displayName: 'MIKE', password: 'TestPassw0rd!' });
+  const postCall = received.find((r) => r.url === '/api/auth/register' && r.method === 'POST');
   check('POST sends Content-Type: application/json',
     postCall?.contentType === 'application/json', String(postCall?.contentType));
-  check('POST body is the display name', postCall?.body.includes('MIKE') === true, postCall?.body);
+  check('POST body carries the credentials', postCall?.body.includes('MIKE') === true, postCall?.body);
+  check('register returns a bearer token', typeof session.token === 'string' && session.token.length > 20);
+  check('register returns the new player', session.player?.displayName === 'MIKE');
+
+  // After a successful sign-up the client holds the token and sends it with
+  // every subsequent request. This is what makes player-owned endpoints work.
+  check('the token is now attached to requests', getApiToken() === session.token);
+  await getMe();
+  const authed = received[received.length - 1];
+  check('an authenticated request carries Authorization', authed.authorization === `Bearer ${session.token}`,
+    authed.authorization);
+
+  // ...and signing out stops it.
+  await logout();
+  check('signing out clears the token', getApiToken() === null);
 
   const board = await getLeaderboard({ sortBy: 'bestTimeMs', order: 'asc', page: 0, size: 10 });
   const boardCall = received.find((r) => r.url?.startsWith('/api/leaderboard'));
@@ -271,7 +310,7 @@ async function main(): Promise<void> {
   check('404 is not retryable (the id will not come back)',
     notFound?.isRetryable === false, String(notFound?.isRetryable));
 
-  const invalid = await expectApiError(() => createPlayer({ displayName: 'x' }));
+  const invalid = await expectApiError(() => registerPlayer({ displayName: 'x', password: 'short' }));
   check('400 is reported with its status', invalid?.status === 400, String(invalid?.status));
   check('400 surfaces per-field errors',
     invalid?.fieldErrors?.displayName !== undefined, JSON.stringify(invalid?.fieldErrors));

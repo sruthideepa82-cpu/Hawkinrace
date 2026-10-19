@@ -1,21 +1,20 @@
 package com.hawkins.nitrorun.controller;
 
-import java.net.URI;
 import java.util.List;
 
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-import com.hawkins.nitrorun.dto.CreatePlayerRequest;
 import com.hawkins.nitrorun.dto.PlayerResponse;
 import com.hawkins.nitrorun.dto.RaceRecordResponse;
 import com.hawkins.nitrorun.dto.UpdatePlayerRequest;
+import com.hawkins.nitrorun.exception.ResourceNotFoundException;
+import com.hawkins.nitrorun.security.CurrentPlayer;
 import com.hawkins.nitrorun.service.PlayerService;
 
 import jakarta.validation.Valid;
@@ -23,11 +22,16 @@ import jakarta.validation.Valid;
 /**
  * Player profiles.
  *
- * <p><b>No authentication.</b> Any caller may read, create and update any
- * profile by id. That is inherent to Phase 4: there are no accounts, so there is
- * nothing to check a caller against. It is fine for a single-player game whose
- * only writes are "I finished this race", and it must not be trusted -- see the
- * README before putting anything real behind this.
+ * <p>Every path here is scoped to the signed-in player. A request for someone
+ * else's profile is answered 404, not 403.
+ *
+ * <p>404 rather than 403 is a deliberate choice: 403 would confirm the id exists,
+ * which turns the endpoint into an oracle for enumerating players. "No such
+ * player" is the truthful answer to someone who is not that player.
+ *
+ * <p><b>{@code GET /api/players} and {@code POST /api/players} are gone.</b> The
+ * list was an open directory of every profile in the game. Creation moved to
+ * {@code POST /api/auth/register}, which requires a password.
  */
 @RestController
 @RequestMapping("/api/players")
@@ -39,42 +43,46 @@ public class PlayerController {
         this.players = players;
     }
 
-    /** {@code GET /api/players} */
-    @GetMapping
-    public List<PlayerResponse> all() {
-        return players.findAll();
-    }
-
-    /** {@code GET /api/players/{playerId}} -- 404 when unknown. */
-    @GetMapping("/{playerId}")
-    public PlayerResponse one(@PathVariable String playerId) {
-        return players.findById(playerId);
+    /** The signed-in player. */
+    @GetMapping("/me")
+    public PlayerResponse me() {
+        return players.findById(CurrentPlayer.id());
     }
 
     /**
-     * {@code POST /api/players} -- 201 with a {@code Location} header.
-     * 400 on an invalid name, 409 if the name is taken.
+     * One profile, only if it is the caller's own.
+     *
+     * @throws ResourceNotFoundException for any other id, deliberately
+     *         indistinguishable from a genuinely missing one.
      */
-    @PostMapping
-    public ResponseEntity<PlayerResponse> create(@Valid @RequestBody CreatePlayerRequest request) {
-        PlayerResponse created = players.create(request);
-        return ResponseEntity.created(URI.create("/api/players/" + created.id())).body(created);
+    @GetMapping("/{playerId}")
+    public PlayerResponse one(@PathVariable String playerId) {
+        return players.findById(requireSelf(playerId));
     }
 
-    /** {@code PUT /api/players/{playerId}} -- 200, or 404 / 400 / 409. */
+    /** Updates the caller's own profile. */
     @PutMapping("/{playerId}")
     public PlayerResponse update(@PathVariable String playerId,
                                  @Valid @RequestBody UpdatePlayerRequest request) {
-        return players.update(playerId, request);
+        return players.update(requireSelf(playerId), request);
+    }
+
+    /** The caller's own race history, newest first. */
+    @GetMapping("/{playerId}/races")
+    public List<RaceRecordResponse> races(@PathVariable String playerId) {
+        return players.raceHistory(requireSelf(playerId));
     }
 
     /**
-     * {@code GET /api/players/{playerId}/races} -- that player's race history,
-     * newest first. 404 when the player is unknown, which is deliberately
-     * different from an empty list.
+     * Fails unless the path id is the caller.
+     *
+     * <p>All the scoping in this controller goes through here, so there is one
+     * place to check rather than a condition repeated on every handler.
      */
-    @GetMapping("/{playerId}/races")
-    public List<RaceRecordResponse> races(@PathVariable String playerId) {
-        return players.raceHistory(playerId);
+    private String requireSelf(String playerId) {
+        if (!CurrentPlayer.is(playerId)) {
+            throw new ResourceNotFoundException("No player with id '" + playerId + "'");
+        }
+        return playerId;
     }
 }

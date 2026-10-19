@@ -4,6 +4,9 @@ import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -21,20 +24,40 @@ import com.hawkins.nitrorun.repository.RaceRepository;
 import com.hawkins.nitrorun.validation.GameId;
 
 /**
- * Stores and reads completed race records. Durable since Phase 5.
+ * Stores and reads completed race records.
  *
- * <p>What this service is responsible for is making a submitted race
- * <em>possible</em>, not just well-shaped. The DTO catches a negative time or a
- * zero position on the way in; this catches the contradictions that survive
- * that, and the schema enforces the rest with CHECK and foreign keys.
+ * <p><b>What this can and cannot prove.</b> The player is authenticated, so the
+ * record genuinely belongs to whoever signed in -- that part is now enforced and
+ * was not before. But the <em>times are still whatever the browser reported</em>.
+ * The game runs offline, so there is no server-side simulation to check them
+ * against, and nothing here makes the leaderboard cheat-proof. What the checks
+ * below do is reject results that are impossible on their face: a lap slower
+ * than the race containing it, more laps than the track has, or a lap time no
+ * car could physically drive.
  *
- * <p><b>None of this is authentication.</b> A caller can submit any race for
- * any player, and the times are taken at face value. That is inherent to the
- * game being single-player and offline.
+ * <p>Submitting twice with the same idempotency key is safe. The key is a client
+ * choice, so this is a guard against a retry being stored twice rather than a
+ * security control.
  */
 @Service
 @Transactional(readOnly = true)
 public class RaceService {
+
+    private static final Logger log = LoggerFactory.getLogger(RaceService.class);
+
+    /**
+     * Fastest plausible lap, in milliseconds.
+     *
+     * <p>The shortest track is about 6700px and the slowest car still averages
+     * well over 400px/s, so a real lap is comfortably above 15 seconds. Ten
+     * seconds leaves a wide margin for a future change to car speed while still
+     * rejecting a submitted 0.4-second lap, which is what a client bug or a
+     * hand-crafted request actually produces.
+     *
+     * <p>This is a sanity floor, not anti-cheat: a client that wants to lie by a
+     * plausible amount is not stopped by any value chosen here.
+     */
+    static final long MIN_PLAUSIBLE_LAP_MS = 10_000L;
 
     private final RaceRepository races;
     private final PlayerRepository players;
@@ -48,36 +71,52 @@ public class RaceService {
         this.tracks = tracks;
     }
 
-    public List<RaceRecordResponse> findAll() {
-        return races.findAllByOrderByCompletedAtDescSeqDesc().stream()
+    /** Whether this key has already been used by this player. */
+    public boolean replayExists(String playerId, String idempotencyKey) {
+        return idempotencyKey != null
+                && races.findByIdempotencyKeyAndPlayer_Id(idempotencyKey, playerId).isPresent();
+    }
+
+    /** The signed-in player's own races, newest first. */
+    public List<RaceRecordResponse> findMine(String playerId) {
+        return races.findByPlayer_IdOrderByCompletedAtDescSeqDesc(playerId).stream()
                 .map(RaceRecordResponse::from)
                 .toList();
     }
 
-    public RaceRecordResponse findById(String id) {
-        return races.findById(id)
-                .map(RaceRecordResponse::from)
-                .orElseThrow(() -> new ResourceNotFoundException("No race record with id '" + id + "'"));
+    /**
+     * One race, but only if the caller owns it.
+     *
+     * @throws ResourceNotFoundException for a race that does not exist or is
+     *         someone else's -- deliberately the same answer for both.
+     */
+    public RaceRecordResponse findMineById(String playerId, String raceId) {
+        Race race = races.findById(raceId)
+                .filter(r -> r.getPlayer().getId().equals(playerId))
+                .orElseThrow(() -> new ResourceNotFoundException("No race record with id '" + raceId + "'"));
+        return RaceRecordResponse.from(race);
     }
 
     /**
-     * Validates and stores one completed race.
+     * Validates and stores one completed race for the signed-in player.
      *
-     * <p>Reads the referenced Player, Car and Track as managed entities inside
-     * the write transaction, so Hibernate issues three cheap primary-key
-     * lookups and then a single INSERT with the foreign keys filled in.
-     *
-     * @throws ResourceNotFoundException   if the player, car or track is unknown.
-     * @throws InvalidRaceResultException if the numbers contradict each other or
-     *         the track.
+     * @param playerId      from the session, never from the request body.
+     * @param idempotencyKey optional client key; a repeat returns the first row.
      */
     @Transactional
-    public CreateRaceResponse save(CreateRaceRequest request) {
-        // Referenced ids must exist. 404 rather than 400: the request was
-        // well-formed, it just points at something that is not there.
-        Player player = players.findById(request.playerId())
-                .orElseThrow(() -> new ResourceNotFoundException(
-                        "No player with id '" + request.playerId() + "'"));
+    public CreateRaceResponse save(String playerId, CreateRaceRequest request, String idempotencyKey) {
+        // A replay is answered with the row that already exists, so a retry
+        // after a dropped response cannot produce a second entry.
+        if (idempotencyKey != null && !idempotencyKey.isBlank()) {
+            var existing = races.findByIdempotencyKeyAndPlayer_Id(idempotencyKey, playerId);
+            if (existing.isPresent()) {
+                log.debug("idempotent replay of race {} for player {}", idempotencyKey, playerId);
+                return CreateRaceResponse.saved(existing.get());
+            }
+        }
+
+        Player player = players.findById(playerId)
+                .orElseThrow(() -> new ResourceNotFoundException("No player with id '" + playerId + "'"));
 
         if (!GameId.isWellFormed(request.carId())) {
             throw new ResourceNotFoundException("No car with id '" + request.carId() + "'");
@@ -109,8 +148,11 @@ public class RaceService {
                     "a bestLapTimeMs cannot be reported when no laps were completed");
         }
 
+        rejectImplausibleTimes(request);
+
         Race record = new Race(
                 newId(),
+                idempotencyKey,
                 player,
                 car,
                 track,
@@ -121,7 +163,42 @@ public class RaceService {
                 request.bestLapTimeMs(),
                 Instant.now());
 
-        return CreateRaceResponse.saved(races.save(record));
+        try {
+            return CreateRaceResponse.saved(races.saveAndFlush(record));
+        } catch (DataIntegrityViolationException ex) {
+            // Two requests carrying the same key raced each other. The winner's
+            // row is authoritative; return it rather than failing the loser.
+            if (idempotencyKey != null && !idempotencyKey.isBlank()) {
+                var winner = races.findByIdempotencyKeyAndPlayer_Id(idempotencyKey, playerId);
+                if (winner.isPresent()) {
+                    return CreateRaceResponse.saved(winner.get());
+                }
+            }
+            throw ex;
+        }
+    }
+
+    /**
+     * Rejects times no car could physically produce.
+     *
+     * <p>Catches the realistic failure modes -- a division by 1000 that left
+     * milliseconds where seconds were meant, a timer reset mid-race, a race
+     * reported with a lap time from a different run. It is not, and cannot be, a
+     * defence against a client that deliberately reports a fast but plausible
+     * time.
+     */
+    private void rejectImplausibleTimes(CreateRaceRequest request) {
+        long fastest = MIN_PLAUSIBLE_LAP_MS * Math.max(1, request.lapsCompleted());
+        if (request.elapsedTimeMs() < fastest) {
+            throw new InvalidRaceResultException(
+                    "elapsedTimeMs (" + request.elapsedTimeMs() + ") is not plausible for "
+                            + request.lapsCompleted() + " lap(s); at least " + fastest + "ms is required");
+        }
+        if (request.bestLapTimeMs() != null && request.bestLapTimeMs() < MIN_PLAUSIBLE_LAP_MS) {
+            throw new InvalidRaceResultException(
+                    "bestLapTimeMs (" + request.bestLapTimeMs()
+                            + ") is faster than any car could complete a lap");
+        }
     }
 
     private static String newId() {

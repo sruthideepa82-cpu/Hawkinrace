@@ -8,7 +8,7 @@ import type { RaceBridge, RaceResult } from '../game/bridge';
 import { useKeyPress } from '../hooks/useKeyPress';
 import { useRouter } from '../router/RouterProvider';
 import { resetReferenceData } from '../services/backend';
-import { ensureProfile } from '../services/profile';
+import { loadProfile } from '../services/profile';
 import { submitRaceResult } from '../services/raceSubmission';
 import { isRaceReady, useGameStore } from '../store/GameStore';
 
@@ -92,14 +92,18 @@ export function RacePage({ showResults = false }: { showResults?: boolean }) {
     trackId: string,
     result: RaceResult,
   ): Promise<void> {
-    // A failed or unfinished race is not a result to record. Still record the
-    // fact, so the screen can say why nothing was sent.
-    const profile = await ensureProfile(characterName);
+    // Racing does not require an account, but recording the result does.
+    // Signed out, the race is still raced and still shown in full -- it simply
+    // is not saved, and the results screen says so rather than implying
+    // otherwise.
+    const profile = await loadProfile();
     if (!profile) {
       dispatch({
         type: 'RACE_SAVE_FAILED',
-        message: 'No player profile: the backend is unreachable.',
-        retryable: true,
+        message: 'Sign in to save race results.',
+        // Retrying without signing in would fail identically. Signing in is the
+        // action that helps, and it is a separate button on the menu.
+        retryable: false,
       });
       return;
     }

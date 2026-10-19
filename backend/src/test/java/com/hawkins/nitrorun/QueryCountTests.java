@@ -108,7 +108,10 @@ class QueryCountTests extends ApiTestSupport {
     }
 
     private void readHistory(String playerId) throws Exception {
-        mvc.perform(get("/api/players/" + playerId + "/races")).andExpect(status().isOk());
+        // Authenticated, like every other player-owned endpoint. Reading this
+        // without a token returns 401 and the query count would measure nothing.
+        mvc.perform(authed(get("/api/players/" + playerId + "/races"), playerId))
+                .andExpect(status().isOk());
     }
 
     private void readLeaderboard() throws Exception {

@@ -8,21 +8,17 @@ import jakarta.validation.constraints.Positive;
 /**
  * Body of {@code POST /api/races}.
  *
- * <p>Times are milliseconds, matching the frontend, which times races in ms
- * internally. The UI divides by 1000 for display; keeping the wire unit equal to
- * the internal one removes a lossy conversion and the rounding drift that comes
- * with it.
+ * <p><b>There is no {@code playerId} field, and that is the point.</b> Until
+ * Phase 7 the body carried one and the server stored whatever it was given, so
+ * any caller could post a race under any player id. The player is now taken from
+ * the signed-in session and the field has been deleted rather than ignored:
+ * a field that is present but unused is an invitation to a future developer to
+ * trust it again.
  *
- * <p>Bounds are enforced here as well as being checked against the track in the
- * service: a fast rejection of nonsense is better than trusting every caller.
- * {@code lapsCompleted} may exceed the track's lap count in the payload only so
- * the service can compare it against the real number and produce a precise
- * message rather than a generic bound failure.
+ * <p>Times are milliseconds, matching the frontend, which times races in ms
+ * internally.
  */
 public record CreateRaceRequest(
-
-        @NotBlank(message = "playerId is required")
-        String playerId,
 
         @NotBlank(message = "carId is required")
         String carId,

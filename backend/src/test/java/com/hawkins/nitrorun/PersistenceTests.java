@@ -87,7 +87,8 @@ class PersistenceTests extends ApiTestSupport {
         jdbc.update("UPDATE players SET display_name = 'After' WHERE id = ?", playerId);
 
         // Read through the API so the mapping layer is exercised too.
-        JsonNode fetched = bodyOf(mvc.perform(get("/api/players/" + playerId))
+        JsonNode fetched = bodyOf(mvc.perform(
+                        authed(get("/api/players/" + playerId), playerId))
                 .andExpect(status().isOk()));
 
         assertEquals("After", fetched.get("displayName").asText());

@@ -38,6 +38,14 @@ public interface RaceRepository extends JpaRepository<Race, String> {
     List<Race> findAllByOrderByCompletedAtDescSeqDesc();
 
     /**
+     * A previously stored race with this idempotency key.
+     *
+     * <p>Scoped to the player as well as the key, so one player's key cannot
+     * make another player's submission look like a replay.
+     */
+    java.util.Optional<Race> findByIdempotencyKeyAndPlayer_Id(String idempotencyKey, String playerId);
+
+    /**
      * Leaderboard rows, aggregated in SQL.
      *
      * <p><b>One query for the whole board.</b> Every statistic is a SQL

@@ -39,6 +39,16 @@ public class Race {
     private String id;
 
     /**
+     * Client-supplied key that makes a replayed submission a no-op.
+     *
+     * <p>Null for a row stored before Phase 7, which is accurate: those have no
+     * idempotency guarantee. The UNIQUE index allows any number of nulls, so
+     * keyless rows do not collide with each other.
+     */
+    @Column(name = "idempotency_key", length = 36, unique = true)
+    private String idempotencyKey;
+
+    /**
      * Monotonic insertion sequence, used only to break {@code completedAt}
      * ties when ordering history.
      *
@@ -96,7 +106,15 @@ public class Race {
     public Race(String id, Player player, Car car, Track track,
                 int finishingPosition, int lapsCompleted, int totalLaps,
                 long elapsedTimeMs, Long bestLapTimeMs, Instant completedAt) {
+        this(id, null, player, car, track, finishingPosition, lapsCompleted,
+                totalLaps, elapsedTimeMs, bestLapTimeMs, completedAt);
+    }
+
+    public Race(String id, String idempotencyKey, Player player, Car car, Track track,
+                int finishingPosition, int lapsCompleted, int totalLaps,
+                long elapsedTimeMs, Long bestLapTimeMs, Instant completedAt) {
         this.id = id;
+        this.idempotencyKey = idempotencyKey;
         this.player = player;
         this.car = car;
         this.track = track;
@@ -110,6 +128,10 @@ public class Race {
 
     public String getId() {
         return id;
+    }
+
+    public String getIdempotencyKey() {
+        return idempotencyKey;
     }
 
     public Player getPlayer() {

@@ -1,193 +1,97 @@
 /**
- * Player identity.
+ * The signed-in player, as the rest of the app sees them.
  *
- * The single place that knows "which player is this browser". Both the race
- * submission path and the profile UI go through here, so there is exactly one
- * implementation of find-or-create rather than one per caller.
+ * Since Phase 7 a profile is created by signing up, not by picking a driver, so
+ * this module no longer has an "ensure a profile exists" job. What remains is
+ * reading the current session and keeping the selected car in step with the
+ * backend.
  *
- * ## No authentication
- *
- * The stored id is a *pointer*, not proof of identity. It lives in localStorage,
- * which anyone with access to the browser can read and edit, and the API accepts
- * a race submitted for any player id at all.
- *
- * So this is the honest version of "remember me" for a game with no accounts:
- * it remembers who you picked so your races land in one place, and it stops
- * nothing. Authentication is a later phase. Nothing in the UI should imply
- * otherwise, and no record derived from this should be presented as verified.
+ * Driver selection is a *local* choice -- which character you drive. It is no
+ * longer what identifies you to the backend, because the account is. The two are
+ * independent, and pretending otherwise was the shape of the old code.
  */
 
 import {
   ApiRequestError,
-  createPlayer,
-  getPlayer,
-  getPlayers,
+  getMe,
   updatePlayer,
   type BackendPlayer,
 } from './api';
+import { restoreSession } from './auth';
 
-/** localStorage key. Namespaced so it cannot collide with `bestRun.ts`. */
-const STORAGE_KEY = 'hawkins.nitroRun.playerId';
-
-function readStoredId(): string | null {
-  try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
-    return raw && raw.length > 0 ? raw : null;
-  } catch {
-    // Private browsing, or storage disabled entirely. The game still plays; it
-    // just creates a fresh profile each session.
-    return null;
-  }
-}
-
-function writeStoredId(id: string | null): void {
-  try {
-    if (id === null) window.localStorage.removeItem(STORAGE_KEY);
-    else window.localStorage.setItem(STORAGE_KEY, id);
-  } catch {
-    // A failed write must never break gameplay. The profile simply will not
-    // survive the session.
-  }
-}
-
-/** Session cache, so a page full of components does not re-fetch per render. */
+/** Session cache, so components do not each re-fetch the signed-in player. */
 let cached: BackendPlayer | null = null;
+let loadPromise: Promise<BackendPlayer | null> | null = null;
 
-/** The id this browser has been using, without contacting the API. */
-export function getStoredPlayerId(): string | null {
-  return cached?.id ?? readStoredId();
-}
-
-/** Forgets the profile. Used by tests and by a future "sign out". */
-export function clearProfile(): void {
-  cached = null;
-  writeStoredId(null);
-}
-
-function remember(player: BackendPlayer): BackendPlayer {
-  cached = player;
-  writeStoredId(player.id);
-  return player;
-}
-
-/**
- * Loads the stored profile from the backend.
- *
- * @returns the profile, or null when there is none, the stored id has expired
- *          (the server was reset), or the backend is unreachable.
- *
- * A 404 clears the stored id: the profile genuinely no longer exists, and
- * leaving it behind would make every later call 404 for the rest of the session.
- * An offline failure is treated differently -- the id is kept, because the
- * profile is probably still there and the network is what is missing.
- */
-export async function loadProfile(): Promise<BackendPlayer | null> {
-  const id = readStoredId();
-  if (!id) return null;
-
-  try {
-    return remember(await getPlayer(id));
-  } catch (error) {
-    if (error instanceof ApiRequestError && error.status === 404) {
-      clearProfile();
-      return null;
-    }
-    if (error instanceof ApiRequestError && error.isOffline) {
-      // Keep the id. The game must remain playable with no backend, and
-      // clearing on a transient network blip would lose the player's history.
-      return null;
-    }
-    console.warn('[profile] could not load the stored profile:', error);
-    return null;
-  }
-}
-
-/** The cached profile, if one was loaded or created this session. */
 export function peekProfile(): BackendPlayer | null {
   return cached;
 }
 
-/**
- * Shares one in-flight load across every caller.
- *
- * Without this, each component that asks for the profile on mount fires its own
- * request, so opening the app with three such components sends three identical
- * GETs. Mirrors the same pattern as `loadReferenceData`.
- */
-let loadPromise: Promise<BackendPlayer | null> | null = null;
+function remember(player: BackendPlayer): BackendPlayer {
+  cached = player;
+  return player;
+}
 
-export function loadProfileOnce(): Promise<BackendPlayer | null> {
+/**
+ * Loads the signed-in player.
+ *
+ * @returns the player, or null when signed out or the backend is unreachable.
+ *
+ * An unreachable backend is not an error worth propagating: the game is
+ * playable signed out, and a page that threw here would take the whole menu with
+ * it.
+ */
+export async function loadProfile(): Promise<BackendPlayer | null> {
+  if (cached) return cached;
+  if (!restoreSession()) return null;
+
   if (!loadPromise) {
-    loadPromise = loadProfile().finally(() => {
-      loadPromise = null;
-    });
+    loadPromise = getMe()
+      .then((player) => remember(player))
+      .catch((error) => {
+        if (error instanceof ApiRequestError) {
+          if (error.status === 401) {
+            // The stored token is no longer accepted. Drop it so the app stops
+            // presenting a credential the server has already refused.
+            cached = null;
+          } else {
+            console.warn('[profile] could not load the session:', error);
+          }
+        }
+        return null;
+      })
+      .finally(() => {
+        loadPromise = null;
+      });
   }
   return loadPromise;
 }
 
-/**
- * Returns this browser's profile, creating it if there is not one yet.
- *
- * Find-or-create by display name, so choosing the same driver twice reuses the
- * same profile and its history rather than accumulating duplicates.
- *
- * @param displayName    3-24 characters matching the backend's rule.
- * @param selectedCarId  set on creation when supplied.
- */
-export async function ensureProfile(
-  displayName: string,
-  selectedCarId: string | null = null,
-): Promise<BackendPlayer | null> {
-  const existing = cached ?? (await loadProfile());
-  if (existing && existing.displayName === displayName) {
-    return selectedCarId && existing.selectedCarId !== selectedCarId
-      ? syncSelectedCar(selectedCarId)
-      : existing;
-  }
-
-  try {
-    return remember(
-      await createPlayer({
-        displayName,
-        ...(selectedCarId ? { selectedCarId } : {}),
-      }),
-    );
-  } catch (error) {
-    // 409 means a profile with that name already exists -- another tab, or a
-    // previous session whose stored id was cleared. Adopt it rather than
-    // failing, which is what makes the flow idempotent.
-    if (error instanceof ApiRequestError && error.status === 409) {
-      const players = await getPlayers();
-      const match = players.find((p) => p.displayName === displayName);
-      if (match) return remember(match);
-    }
-    console.warn('[profile] could not create a profile:', error);
-    return null;
-  }
+/** Clears the cached session. Called on sign-out. */
+export function clearProfile(): void {
+  cached = null;
 }
 
 /**
  * Persists the player's car choice.
  *
- * Fire-and-forget from the caller's point of view: a failure here costs a
- * cosmetic nicety (the selection reverts on the next visit), so it must never
- * interrupt the selection flow.
+ * Fire-and-forget by design: choosing a car must feel instant whether or not
+ * the backend is there. A failure costs a preference that will not be
+ * remembered next visit, and nothing more.
  */
 export async function syncSelectedCar(carId: string): Promise<BackendPlayer | null> {
-  const current = cached ?? (await loadProfile());
-  if (!current) return null;
+  const player = cached ?? (await loadProfile());
+  if (!player) return null;
 
   try {
     return remember(
-      await updatePlayer(current.id, {
-        displayName: current.displayName,
+      await updatePlayer(player.id, {
+        displayName: player.displayName,
         selectedCarId: carId,
       }),
     );
   } catch (error) {
-    if (error instanceof ApiRequestError && error.status === 404) {
-      // The profile was deleted server-side. Forget it so the next selection
-      // creates a fresh one instead of failing the same way forever.
+    if (error instanceof ApiRequestError && error.status === 401) {
       clearProfile();
       return null;
     }

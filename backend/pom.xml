@@ -68,6 +68,20 @@
 		</dependency>
 
 		<!--
+			Security. Phase 7 added this because until now every endpoint was
+			reachable by anyone: a caller could enumerate every player profile
+			and submit a race for any player id.
+
+			BCryptPasswordEncoder ships inside spring-security-crypto, which
+			starter-security pulls in, so password hashing costs no extra
+			dependency.
+		-->
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-security</artifactId>
+		</dependency>
+
+		<!--
 			Actuator for health and monitoring. Only the health endpoint is exposed;
 			see `management.endpoints.web.exposure.include` in application.yml.
 			The richer ones (env, beans, configprops) can leak configuration and

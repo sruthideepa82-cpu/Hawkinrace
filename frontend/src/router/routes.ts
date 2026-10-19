@@ -14,6 +14,7 @@ export const SCREENS = [
   'leaderboard',
   'settings',
   'character',
+  'auth',
   'car',
   'track',
   'mode',

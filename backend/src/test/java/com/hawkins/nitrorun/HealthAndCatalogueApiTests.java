@@ -69,10 +69,15 @@ class HealthAndCatalogueApiTests extends ApiTestSupport {
     @Test
     @DisplayName("Actuator does not expose configuration")
     void actuatorDoesNotExposeEnv() throws Exception {
-        // Would reveal the JDBC URL and, in some setups, credentials.
-        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+        // Would reveal the JDBC URL and, in some setups, credentials. Since
+        // Phase 7 the security rules also cover this path, so the answer is 401
+        // for an unauthenticated caller; either way nothing is served.
+        int status = mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
                         .get("/actuator/env"))
-                .andExpect(status().isNotFound());
+                .andReturn().getResponse().getStatus();
+        org.junit.jupiter.api.Assertions.assertTrue(
+                status == 404 || status == 401,
+                "actuator/env must not be readable, got " + status);
     }
 
     @Test

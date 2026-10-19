@@ -43,15 +43,43 @@ export type SubmissionOutcome =
 
 /** Injected for tests. Defaults to the real API. */
 export interface SubmissionDeps {
-  save: (payload: RaceSubmission) => Promise<{ id: string }>;
+  save: (payload: RaceSubmission, idempotencyKey?: string) => Promise<{ id: string }>;
 }
 
 const defaultDeps: SubmissionDeps = {
-  save: async (payload) => {
-    const response = await saveRaceResult(payload);
+  save: async (payload, idempotencyKey) => {
+    const response = await saveRaceResult(payload, idempotencyKey);
     return { id: response.id };
   },
 };
+
+/**
+ * Turns a fingerprint into the `Idempotency-Key` sent to the server.
+ *
+ * <p>A truncated SHA-256 of the fingerprint, because the column is bounded to 36
+ * characters and a raw fingerprint is far longer.
+ *
+ * <p>Deterministic on purpose: the same race always produces the same key, so a
+ * retry -- including one after a page reload -- is recognised by the server as a
+ * replay instead of adding a second row. That is the server-side half of the
+ * duplicate protection; the in-flight map below is the client-side half.
+ *
+ * <p>Without WebCrypto the key is simply not sent and the client-side dedupe
+ * still applies. That degrades to Phase 6 behaviour rather than breaking.
+ */
+async function idempotencyKeyFor(fingerprint: string): Promise<string | undefined> {
+  const subtle = globalThis.crypto?.subtle;
+  if (!subtle) return undefined;
+  try {
+    const digest = await subtle.digest('SHA-256', new TextEncoder().encode(fingerprint));
+    return [...new Uint8Array(digest)]
+      .slice(0, 16)
+      .map((b) => b.toString(16).padStart(2, '0'))
+      .join('');
+  } catch {
+    return undefined;
+  }
+}
 
 /**
  * A stable identity for one specific completed race.
@@ -127,9 +155,11 @@ export function buildRacePayload(
     return { problem: 'best lap was longer than the whole race' };
   }
 
+  // No playerId: the server takes the player from the session token. Sending it
+  // would be sending a claim about who is racing, which is exactly what
+  // authentication exists to remove.
   return {
     payload: {
-      playerId,
       carId,
       trackId,
       elapsedTimeMs: result.timeMs,
@@ -194,7 +224,7 @@ export function submitRaceResult(
 
   const work = (async (): Promise<SubmissionOutcome> => {
     try {
-      const { id } = await deps.save(built.payload);
+      const { id } = await deps.save(built.payload, await idempotencyKeyFor(fingerprint));
       submitted.set(fingerprint, id);
       return { status: 'saved', raceId: id };
     } catch (error) {

@@ -36,10 +36,14 @@ const PAGE_SIZE = 10;
  *  - **Never invent rows.** If the API fails, the screen says so. A hardcoded
  *    or local fallback board would look identical to a real one and quietly
  *    misrepresent who has actually driven what.
- *  - **Always show a real time for the track in scope.** The backend ranks
- *    players *overall*; when a single track is selected the displayed time is
- *    read from that player's history for that track, because their overall best
- *    may have been set somewhere else entirely.
+ *  - **Never show a time that is not the one it claims to be.** When Phase 7
+ *    locked race history to its owner, the old per-track filter -- which read
+ *    every visible player's history to find their best on that track -- stopped
+ *    working, and would have been wrong to re-enable by loosening the API. So
+ *    the track buttons now choose a *scope for the board itself*, and each row
+ *    shows that player's own overall best. A player whose quickest lap is
+ *    elsewhere on the board is showing a real number for a real time, which is
+ *    the most that public data can honestly support.
  *  - **Refetch after a save.** `leaderboardVersion` bumps when a race is
  *    confirmed stored, so the player's own new time appears without a manual
  *    refresh. Otherwise a successful save would look like it had failed.
@@ -79,30 +83,17 @@ export function LeaderboardPage() {
         if (!active) return;
         setTotalPages(board.totalPages);
 
-        if (scope === ALL_TRACKS) {
-          setRows(board.entries.map((entry) => toRow(entry)));
-          setStatus('ready');
-          return;
-        }
-
-        // Per-track: keep only players who have actually raced here, and show
-        // their quickest total ON THIS TRACK rather than overall. One request
-        // per row on the current page, never for rows the player cannot see.
-        const entries = await Promise.all(
-          board.entries.map(async (entry) => {
-            const races = await getPlayerRaces(entry.playerId);
-            const best = races
-              .filter((race) => race.trackId === scope)
-              .reduce<number | null>(
-                (lowest, race) =>
-                  lowest === null || race.elapsedTimeMs < lowest ? race.elapsedTimeMs : lowest,
-                null,
-              );
-            return best === null ? null : toRow(entry, best);
-          }),
-        );
+        // One request for the whole board. Previously this fanned out to
+        // `GET /api/players/{id}/races` for every visible player to find their
+        // time on the selected track. That endpoint is now owner-only, which is
+        // the correct behaviour -- so the fan-out is gone rather than the API
+        // being loosened to suit a screen.
         if (!active) return;
-        setRows(entries.filter((row): row is BoardRow => row !== null));
+        setRows(
+            board.entries
+              .filter((entry) => scope === ALL_TRACKS || entry.trackId === scope)
+              .map((entry) => toRow(entry)),
+        );
         setStatus('ready');
       } catch (error) {
         console.warn('[backend] Leaderboard unavailable:', error);

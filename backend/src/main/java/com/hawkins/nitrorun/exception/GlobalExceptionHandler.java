@@ -47,6 +47,22 @@ public class GlobalExceptionHandler {
         return build(HttpStatus.BAD_REQUEST, ex.getMessage(), request);
     }
 
+    /**
+     * 401: sign-in failed.
+     *
+     * <p>Reports one fixed message for an unknown display name, a wrong password
+     * and a legacy account with no password, so the response cannot be used to
+     * discover which names are registered.
+     */
+    @ExceptionHandler(InvalidCredentialsException.class)
+    public ResponseEntity<ApiError> handleInvalidCredentials(InvalidCredentialsException ex,
+                                                              HttpServletRequest request) {
+        // Deliberately not logged at WARN: this is a routine failed sign-in, and
+        // logging every one would fill the log with noise an attacker controls.
+        log.debug("Failed sign-in for {}", request.getRequestURI());
+        return build(HttpStatus.UNAUTHORIZED, ex.getMessage(), request);
+    }
+
     /** 409: creating something that already exists. */
     @ExceptionHandler(DuplicateResourceException.class)
     public ResponseEntity<ApiError> handleDuplicate(DuplicateResourceException ex, HttpServletRequest request) {

@@ -1,4 +1,4 @@
-import { useEffect, useState, type CSSProperties } from 'react';
+import type { CSSProperties } from 'react';
 import { ScreenFrame } from '../components/ScreenFrame';
 import { CHARACTERS } from '../data/characters';
 import { usePlayerProfile } from '../hooks/usePlayerProfile';
@@ -9,46 +9,7 @@ import '../character.css';
 export function CharacterSelectPage() {
   const { state, dispatch } = useGameStore();
   const { navigate } = useRouter();
-  const { profile, ensure } = usePlayerProfile();
-  const [profileNote, setProfileNote] = useState<string | null>(null);
-
-  /**
-   * Make sure a backend profile exists for whichever driver is selected.
-   *
-   * Runs in an effect keyed on the selection, so choosing the same driver twice
-   * does not re-create anything: `ensureProfile` is find-or-create and returns
-   * the existing row.
-   *
-   * StrictMode invokes this twice in development. That is harmless here and is
-   * precisely why the operation is idempotent rather than guarded with a ref --
-   * a ref would suppress the real second call and hide genuine duplicates.
-   *
-   * The selection screen never waits for it. Choosing a driver must feel
-   * instant, and a player with no backend still races.
-   */
-  useEffect(() => {
-    const chosen = CHARACTERS.find((c) => c.id === state.selectedCharacterId);
-    if (!chosen) return;
-
-    let active = true;
-    setProfileNote(null);
-    ensure(chosen.name)
-      .then((created) => {
-        if (!active) return;
-        setProfileNote(
-          created
-            ? `Racing as ${created.displayName} — results will be saved to the leaderboard.`
-            : 'Offline: your results will not be saved this session.',
-        );
-      })
-      .catch(() => {
-        if (active) setProfileNote('Offline: your results will not be saved this session.');
-      });
-
-    return () => {
-      active = false;
-    };
-  }, [state.selectedCharacterId, ensure]);
+  const { profile, status } = usePlayerProfile();
 
   return (
     <ScreenFrame
@@ -92,22 +53,23 @@ export function CharacterSelectPage() {
         })}
       </div>
 
-      {/* Persisted-profile status. Announced politely because it resolves
-          asynchronously and would otherwise appear from nowhere.
+      {/* Session state. Says plainly whether the race will be recorded, because
+          the difference between "here is your time" and "here is your time, and
+          it is saved" is the whole point of this line.
 
-          Shown while a driver is selected but `ensure` has not answered yet, so
-          the line does not pop into existence without explanation. Selecting a
-          driver with no backend leaves it on LINKING briefly and then settles
-          on the offline wording -- never on an error, because a missing backend
-          is an expected state and not something to alarm the player about. */}
-      {state.selectedCharacterId ? (
+          Held back until the driver is chosen so it does not greet someone who
+          has not decided anything yet. `role="status"` because it resolves
+          asynchronously and would otherwise appear without explanation. */}
+      {state.selectedCharacterId && status !== 'loading' ? (
         <p
-          className={`character-profile-note is-${
-            profileNote === null ? 'pending' : profile?.id ? 'linked' : 'offline'
-          }`}
+          className={`character-profile-note is-${status === 'signed-in' ? 'linked' : 'offline'}`}
           role="status"
         >
-          {profileNote ?? 'LINKING PROFILE…'}
+          {status === 'signed-in'
+            ? `Signed in as ${profile?.displayName}. Results will be saved.`
+            : status === 'offline'
+              ? 'Backend offline. You can race, but results will not be saved.'
+              : 'Signed out. You can race, but results will not be saved.'}
         </p>
       ) : null}
     </ScreenFrame>

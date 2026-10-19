@@ -124,7 +124,10 @@ check('a finished Quick Race is accepted', 'payload' in built);
 if ('payload' in built) {
   check('car id is the game literal', built.payload.carId === 'apex-vulcan', built.payload.carId);
   check('track id is the game literal', built.payload.trackId === 'hawkins-streets', built.payload.trackId);
-  check('player id is passed through', built.payload.playerId === 'plr_abc12345');
+  // Deliberately absent: the player comes from the session token, not the body.
+  // Sending a playerId would be sending a claim about who is racing, which is
+  // exactly what authentication removes.
+  check('the payload carries no playerId', !('playerId' in built.payload));
   // Milliseconds, matching both the game and the backend. Dividing by 1000 here
   // is the mistake that would put a 0.1s "time" on the board.
   check('elapsed time is milliseconds, not seconds', built.payload.elapsedTimeMs === 134_883,

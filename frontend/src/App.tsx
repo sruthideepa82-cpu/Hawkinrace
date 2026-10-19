@@ -1,3 +1,4 @@
+import { AuthPage } from './pages/AuthPage';
 import { CharacterSelectPage } from './pages/CharacterSelectPage';
 import { CarSelectPage } from './pages/CarSelectPage';
 import { IntroPage } from './pages/IntroPage';
@@ -32,6 +33,7 @@ function CurrentScreen({ screen }: { screen: Screen }) {
     case 'leaderboard': return <LeaderboardPage />;
     case 'settings': return <PlaceholderPage screen={screen} />;
     case 'character': return <CharacterSelectPage />;
+    case 'auth': return <AuthPage />;
     case 'car': return <CarSelectPage />;
     case 'track': return <TrackSelectPage />;
     case 'mode': return <ModeSelectPage />;

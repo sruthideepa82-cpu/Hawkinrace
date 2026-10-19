@@ -41,6 +41,24 @@ export function readEnv(): Record<string, string | undefined> {
   }
 }
 
+/**
+ * The bearer token for the signed-in player, or null when signed out.
+ *
+ * <p>Held here rather than read from storage on every call so that signing in
+ * and out takes effect immediately for in-flight callers, and so there is
+ * exactly one place the header is attached. Nothing else in the app builds an
+ * Authorization header.
+ */
+let apiToken: string | null = null;
+
+export function setApiToken(token: string | null): void {
+  apiToken = token;
+}
+
+export function getApiToken(): string | null {
+  return apiToken;
+}
+
 /** Set by tests to point the client at a stub server. `null` restores config. */
 let baseUrlOverride: string | null = null;
 
@@ -112,13 +130,7 @@ export interface BackendPlayer {
   createdAt: string;
 }
 
-/** Body of POST /api/players. The server assigns `id` and `createdAt`. */
-export interface CreatePlayerPayload {
-  displayName: string;
-  selectedCarId?: string | null;
-}
-
-/** Body of PUT /api/players/{id}. */
+/** Body of PUT /api/players/{id}, which edits the caller's own profile. */
 export interface UpdatePlayerPayload {
   displayName: string;
   selectedCarId?: string | null;
@@ -138,9 +150,13 @@ export interface RaceRecord {
   completedAt: string;
 }
 
-/** Body of POST /api/races. Times are milliseconds. */
+/**
+ * Body of POST /api/races. Times are milliseconds.
+ *
+ * <p>No `playerId`: the server takes the player from the session. The field was
+ * removed rather than ignored so there is nothing left to trust by mistake.
+ */
 export interface RaceSubmission {
-  playerId: string;
   carId: string;
   trackId: string;
   elapsedTimeMs: number;
@@ -245,15 +261,18 @@ export class ApiRequestError extends Error {
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const base = apiBaseUrl();
+  const headers: Record<string, string> = { ...(init?.headers as Record<string, string>) };
+  // Only attach Content-Type when there is a body to describe. Setting it on
+  // a GET forces the browser into a CORS preflight for a request that has
+  // nothing to preflight.
+  if (init?.body) headers['Content-Type'] = 'application/json';
+  // Sent on every call, including the public ones. Harmless there, and it saves
+  // every call site from deciding whether it needs to.
+  if (apiToken) headers['Authorization'] = `Bearer ${apiToken}`;
+
   let response: Response;
   try {
-    response = await fetch(`${base}${path}`, {
-      // Only attach Content-Type when there is a body to describe. Setting it on
-      // a GET forces the browser into a CORS preflight for a request that has
-      // nothing to preflight.
-      ...(init?.body ? { headers: { 'Content-Type': 'application/json' } } : {}),
-      ...init,
-    });
+    response = await fetch(`${base}${path}`, { ...init, headers });
   } catch (cause) {
     // Network-level failure: the backend is probably not running, or CORS
     // blocked it. Status 0 marks this so callers can tell "offline" apart from
@@ -270,6 +289,14 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   if (!response.ok) {
     let message = `Request failed (${response.status})`;
     let fieldErrors: Record<string, string> = {};
+
+    // A rejected token is not going to start working. Dropping it here stops
+    // every later request from presenting a credential the server has already
+    // refused, and lets the app fall back to signed-out rather than looping on
+    // 401s.
+    if (response.status === 401) {
+      apiToken = null;
+    }
     try {
       const body = (await response.json()) as ApiErrorBody;
       if (body?.message) message = body.message;
@@ -324,23 +351,61 @@ export function getHealth(): Promise<BackendHealth> {
   return request<BackendHealth>('/api/health');
 }
 
-/* Players ------------------------------------------------------------------ */
+/* Authentication ------------------------------------------------------------ */
 
-export function getPlayers(): Promise<BackendPlayer[]> {
-  return request<BackendPlayer[]>('/api/players');
+export interface Credentials {
+  displayName: string;
+  password: string;
 }
 
+/** Response to register/login. `player` is the signed-in profile. */
+export interface AuthSession {
+  token: string;
+  tokenType: string;
+  expiresAt: string;
+  player: BackendPlayer;
+}
+
+/** Creates an account and signs in. 201. */
+export function registerPlayer(credentials: Credentials): Promise<AuthSession> {
+  return request<AuthSession>('/api/auth/register', {
+    method: 'POST',
+    body: JSON.stringify(credentials),
+  });
+}
+
+/** Exchanges a password for a token. */
+export function loginPlayer(credentials: Credentials): Promise<AuthSession> {
+  return request<AuthSession>('/api/auth/login', {
+    method: 'POST',
+    body: JSON.stringify(credentials),
+  });
+}
+
+/** Revokes the current session server-side. */
+export function logoutPlayer(): Promise<void> {
+  return request<void>('/api/auth/logout', { method: 'POST' });
+}
+
+/** The signed-in player. 401 when the token is missing or expired. */
+export function getMe(): Promise<BackendPlayer> {
+  return request<BackendPlayer>('/api/auth/me');
+}
+
+/* Player-owned data -------------------------------------------------------- */
+
+/**
+ * A player's own profile.
+ *
+ * <p>Requires that player's token, and answers 404 for anyone else's id -- the
+ * same answer as an id that does not exist, so this cannot be used to discover
+ * who is registered.
+ */
 export function getPlayer(playerId: string): Promise<BackendPlayer> {
   return request<BackendPlayer>(`/api/players/${encodeURIComponent(playerId)}`);
 }
 
-export function createPlayer(payload: CreatePlayerPayload): Promise<BackendPlayer> {
-  return request<BackendPlayer>('/api/players', {
-    method: 'POST',
-    body: JSON.stringify(payload),
-  });
-}
-
+/** Updates the caller's own profile. */
 export function updatePlayer(
   playerId: string,
   payload: UpdatePlayerPayload,
@@ -351,9 +416,14 @@ export function updatePlayer(
   });
 }
 
-/** A player's race history, newest first. 404 if the player is unknown. */
+/** The caller's own race history, newest first. */
 export function getPlayerRaces(playerId: string): Promise<RaceRecord[]> {
   return request<RaceRecord[]>(`/api/players/${encodeURIComponent(playerId)}/races`);
+}
+
+/** The caller's own races. */
+export function getMyRaces(): Promise<RaceRecord[]> {
+  return request<RaceRecord[]>('/api/races');
 }
 
 /* Cars and tracks ---------------------------------------------------------- */
@@ -376,9 +446,20 @@ export function getTrack(trackId: string): Promise<BackendTrack> {
 
 /* Races -------------------------------------------------------------------- */
 
-export function saveRaceResult(submission: RaceSubmission): Promise<RaceSavedResponse> {
+/**
+ * Records a completed race.
+ *
+ * @param idempotencyKey stable key for this one race. Re-sending with the same
+ *        key returns the row already stored instead of adding a second one, so a
+ *        retry after a dropped response cannot double-count.
+ */
+export function saveRaceResult(
+  submission: RaceSubmission,
+  idempotencyKey?: string,
+): Promise<RaceSavedResponse> {
   return request<RaceSavedResponse>('/api/races', {
     method: 'POST',
+    headers: idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : {},
     body: JSON.stringify(submission),
   });
 }

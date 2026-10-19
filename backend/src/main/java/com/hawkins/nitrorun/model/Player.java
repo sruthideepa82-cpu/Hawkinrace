@@ -13,13 +13,16 @@ import jakarta.persistence.Table;
 /**
  * A player profile, persisted to {@code players}.
  *
- * <p><b>This is not an account.</b> There is no credential column, by design:
- * authentication belongs to a later security phase, and adding a password
- * column now would imply a protection that does not exist. Whoever sends a
- * valid request is trusted.
+ * <p><b>Phase 7 added credentials.</b> {@code passwordHash} is a BCrypt hash and
+ * is never returned by any DTO. Before that this class deliberately had no
+ * credential column, which meant any caller could read every profile and submit
+ * a race for any player id.
  *
- * <p>The consequence is that every race attributed to this profile is
- * self-reported and unverified. See {@code Race}.
+ * <p>Being signed in proves <em>which</em> player is making a request. It does
+ * not make their race times true: the game is single-player and offline, so the
+ * client still reports the times it drove. Authentication closes the door on
+ * other people's accounts; it does not make a leaderboard cheat-proof. See
+ * {@code Race}.
  *
  * <p>{@code displayName} carries a UNIQUE constraint. In Phase 4 that rule was
  * enforced only by a service-level check; it is now a database constraint too,
@@ -36,6 +39,26 @@ public class Player {
 
     @Column(name = "display_name", length = 24, nullable = false, unique = true)
     private String displayName;
+
+    /**
+     * BCrypt hash of the player's password, or null for an account created
+     * before Phase 7.
+     *
+     * <p>Never leaves the persistence layer: no DTO, no response body and no log
+     * statement reads this.
+     */
+    @Column(name = "password_hash", length = 100)
+    private String passwordHash;
+
+    /**
+     * True when this profile can sign in.
+     *
+     * <p>A null hash means a legacy account with no password. It is reported as
+     * such rather than failing with a confusing "invalid password".
+     */
+    public boolean hasPassword() {
+        return passwordHash != null && !passwordHash.isBlank();
+    }
 
     /**
      * The car this profile last selected, or null before they pick one.
@@ -60,10 +83,23 @@ public class Player {
     }
 
     public Player(String id, String displayName, Car selectedCar, Instant createdAt) {
+        this(id, displayName, null, selectedCar, createdAt);
+    }
+
+    public Player(String id, String displayName, String passwordHash, Car selectedCar, Instant createdAt) {
         this.id = id;
         this.displayName = displayName;
+        this.passwordHash = passwordHash;
         this.selectedCar = selectedCar;
         this.createdAt = createdAt;
+    }
+
+    public String getPasswordHash() {
+        return passwordHash;
+    }
+
+    public void setPasswordHash(String passwordHash) {
+        this.passwordHash = passwordHash;
     }
 
     public String getId() {
