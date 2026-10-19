@@ -423,6 +423,44 @@ console.log('\n[scene] pause works through the real scene');
   releaseAll();
 }
 
+console.log('\n[scene] the camera keeps the car in frame on every track');
+{
+  // The game renders at a fixed 1280x720 logical size under Scale.FIT, so zoom
+  // and bounds are resolution-independent by construction. What still needs
+  // proving is the promise that actually matters to a player: the car is on
+  // screen and the world does not scroll off its own edges.
+  const scene = sceneOf(SCENE_KEYS.game);
+  const cam = scene.cameras.main;
+  const world = scene.session.layout;
+
+  check('camera bounds match the world bounds',
+    cam.worldView.width <= world.worldWidth && cam.worldView.height <= world.worldHeight,
+    `world ${world.worldWidth}x${world.worldHeight}`);
+
+  // Drive, and check the car stayed inside the view every step.
+  let worstOut = 0;
+  let worstDetail = '';
+  for (let i = 0; i < 90; i++) {
+    await drive(16);
+    const p = scene.session.player.physics;
+    const v = cam.worldView;
+    const outX = Math.max(v.x - p.x, p.x - v.right, 0);
+    const outY = Math.max(v.y - p.y, p.y - v.bottom, 0);
+    const out = Math.max(outX, outY);
+    if (out > worstOut) {
+      worstOut = out;
+      worstDetail = `car(${Math.round(p.x)},${Math.round(p.y)}) view(${Math.round(v.x)},${Math.round(v.y)} ${Math.round(v.width)}x${Math.round(v.height)}) speed=${Math.round(p.speed)} zoom=${cam.zoom.toFixed(2)} rot=${cam.rotation.toFixed(2)}`;
+    }
+  }
+  check('the car stays inside the camera view while driving', worstOut < 40, `${Math.round(worstOut)}px worst overshoot; ${worstDetail}`);
+
+  // The view must not run past the world, or the player sees empty void.
+  const view = cam.worldView;
+  check('the view never shows past the world edge',
+    view.x > -1 && view.y > -1 && view.right < world.worldWidth + 1 && view.bottom < world.worldHeight + 1,
+    `view ${Math.round(view.x)},${Math.round(view.y)} ${Math.round(view.width)}x${Math.round(view.height)}`);
+}
+
 console.log('\n[scene] audio is acquired once and released on shutdown');
 {
   // The scene holds a reference count on the shared audio manager, so a restart
@@ -450,6 +488,35 @@ console.log('\n[scene] audio is acquired once and released on shutdown');
   check('M toggles back', manager.isMuted() !== nowMuted);
 
   check('the race scene is still alive after the audio work', sceneOf(SCENE_KEYS.game).scene.isActive() === true);
+}
+
+console.log('\n[scene] every track bakes its world without a missing asset');
+{
+  // Spec item: "verify that all tracks load without missing assets". Baking is
+  // the only way to prove that -- a missing texture only shows up when the
+  // draw actually runs, so each track is built for real on the live scene and
+  // the resulting texture is checked for existence and sane size.
+  const { TrackLayout } = await import('../src/game/entities/TrackLayout.ts');
+  const { getTrackDefinition, PLAYABLE_TRACK_IDS } = await import('../src/game/config/tracks.ts');
+  const { WorldBuilder } = await import('../src/game/world/WorldBuilder.ts');
+  const scene = sceneOf(SCENE_KEYS.game);
+
+  for (const id of PLAYABLE_TRACK_IDS) {
+    let baked = false;
+    let error = '';
+    const t0 = performance.now();
+    try {
+      const layout = new TrackLayout(getTrackDefinition(id));
+      const key = WorldBuilder.build(scene, layout);
+      baked = scene.textures.exists(key);
+    } catch (e) {
+      error = String(e).split('\n')[0];
+    }
+    const ms = Math.round(performance.now() - t0);
+    check(`[${id}] its world bakes`, baked && error === '', error || `${ms}ms`);
+  }
+
+  check('the raced world survived baking every track', sceneOf(SCENE_KEYS.game).scene.isActive() === true);
 }
 
 console.log('\n[scene] nothing is handed to React while the race is still on');

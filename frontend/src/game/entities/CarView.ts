@@ -37,8 +37,15 @@ export class CarView {
   constructor(
     protected readonly scene: Phaser.Scene,
     readonly config: RacerConfig,
+    /**
+     * Optional texture override. The player always uses their chosen chassis;
+     * opponents are given a distinct livery so four cars on the same road are
+     * readable at a glance. Null falls back to the chassis sprite.
+     */
+    readonly liveryKey: string | null = null,
   ) {
-    this.sprite = scene.add.image(0, 0, ensureCarTexture(scene, config.carId, config.color)).setDepth(10);
+    const textureKey = this.liveryKey ?? ensureCarTexture(scene, config.carId, config.color);
+    this.sprite = scene.add.image(0, 0, textureKey).setDepth(10);
     // Scale the car sprite to roughly 84 pixels wide (the size of the old procedural texture)
     this.sprite.setScale(84 / this.sprite.width);
     this.shadow = scene.add.image(0, 0, this.sprite.texture.key)

@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { getRaceBridge, type RaceBridge } from '../bridge';
-import { GAME_EVENTS, SCENE_KEYS } from '../config/GameConfig';
+import { GAME_EVENTS, SCENE_KEYS, GAME } from '../config/GameConfig';
 import { getTrackDefinition } from '../config/tracks';
 import { getDifficulty } from '../config/difficulty';
 import { isTimeTrialMode } from '../../data/gameModes';
@@ -8,9 +8,11 @@ import { buildGrid } from '../config/racers';
 import { CameraRig } from '../entities/CameraRig';
 import { PlayerCar } from '../entities/PlayerCar';
 import { AiCarView } from '../entities/CarView';
-import { ensureParticleTexture } from '../entities/carTexture';
+import { ensureParticleTexture, liveryFor } from '../entities/carTexture';
 import { TrackLayout } from '../entities/TrackLayout';
-import { TrackRenderer } from '../entities/TrackRenderer';
+import { WorldBuilder } from '../world/WorldBuilder';
+import { Atmosphere } from '../world/Atmosphere';
+import { getTheme } from '../config/worldTheme';
 import { InputController } from '../systems/InputController';
 import { AudioManager, RaceAudioDriver } from '../systems/AudioManager';
 import { RaceSession, type Racer } from '../systems/RaceSession';
@@ -41,6 +43,8 @@ export class GameScene extends Phaser.Scene {
   private resultReported = false;
   private previousState: string = 'countdown';
   private rainEmitter?: Phaser.GameObjects.Particles.ParticleEmitter;
+  /** Fog and motes. Theme-driven; owns nothing but its own display objects. */
+  private atmosphere?: Atmosphere;
   private vecna?: VecnaEntity;
   private supernaturalSystem?: SupernaturalSystem;
   private collisionDebug!: CollisionDebug;
@@ -57,6 +61,14 @@ export class GameScene extends Phaser.Scene {
     this.load.image('car-venom-verde', 'cars/car-venom-verde-top.png');
     this.load.image('car-shadow-gt', 'cars/car-shadow-gt-top.png');
     this.load.image('car-inferno-rs', 'cars/car-inferno-rs-top.png');
+
+    // Opponent liveries. These are separate painted cars that shipped with the
+    // project but were never loaded; they give each AI a distinct identity
+    // instead of three copies of whatever the player is driving.
+    this.load.image('livery-orange', 'cars/car-orange.png');
+    this.load.image('livery-green', 'cars/car-green.png');
+    this.load.image('livery-blue', 'cars/car-blue.png');
+    this.load.image('livery-red', 'cars/car-red.png');
   }
 
   create(): void {
@@ -67,7 +79,10 @@ export class GameScene extends Phaser.Scene {
     this.aiViews.clear();
 
     const layout = new TrackLayout(getTrackDefinition(this.bridge.config.trackId));
-    new TrackRenderer(this, layout);
+    // The baked world: ground, road, markings, props, checkpoints, finish.
+    // Built once per track and cached by id, so a retry reuses the texture.
+    WorldBuilder.build(this, layout);
+    const theme = getTheme(layout.definition.id);
 
     // The player keeps the driver and car they picked; the AI field is built
     // around them from the drivers and cars they did not choose, at the
@@ -84,7 +99,10 @@ export class GameScene extends Phaser.Scene {
     this.playerCar = new PlayerCar(this, playerConfig, layout.worldWidth, layout.worldHeight);
     for (const config of aiConfigs) {
       const racer = this.session.racers.find((r) => r.config === config);
-      if (racer) this.aiViews.set(racer, new AiCarView(this, config));
+      if (racer) {
+        const livery = liveryFor(this, aiConfigs.indexOf(config));
+        this.aiViews.set(racer, new AiCarView(this, config, livery));
+      }
     }
     this.inputController = new InputController(this);
 
@@ -92,74 +110,46 @@ export class GameScene extends Phaser.Scene {
     const cam = this.cameras.main;
     cam.setBounds(0, 0, layout.worldWidth, layout.worldHeight);
     const trackId = this.bridge.config.trackId;
-    
-    // Background and base ambiance
-    if (trackId === 'upside-down') cam.setBackgroundColor(0x0f0005);
-    else if (trackId === 'hawkins-forest') cam.setBackgroundColor(0x02050a);
-    else if (trackId === 'hawkins-lab') cam.setBackgroundColor(0x0a0c11);
-    else if (trackId === 'starcourt-run') cam.setBackgroundColor(0x050510);
-    else cam.setBackgroundColor(0x07060d); // hawkins-streets
 
-    // Track-specific weather and particle effects
+    // Ambient ground colour comes from the theme, so it always matches the
+    // baked world and cannot drift from it.
+    cam.setBackgroundColor(theme.cameraBackground);
+
+    // Atmosphere: fog sheets and drifting motes, both theme-driven.
+    //
+    // This replaces the per-track `if (trackId === ...)` weather blocks that
+    // used to live here. Those were the same idea written out five times, with
+    // a full-world tinted rectangle each; the theme does it once and in screen
+    // space, which is both cheaper and consistent with the new art.
+    this.atmosphere?.destroy();
+    this.atmosphere = new Atmosphere(this, theme, GAME.width, GAME.height);
+
+    // Rain over Hawkins Town is the one effect worth keeping as its own thing:
+    // it falls, which a drifting mote cannot fake.
     if (trackId === 'hawkins-streets') {
-      const rg = this.make.graphics({x:0, y:0}, false);
+      const rg = this.make.graphics({ x: 0, y: 0 }, false);
       rg.fillStyle(0xaaaaff, 0.4);
       rg.fillRect(0, 0, 2, 20);
       rg.generateTexture('rain_drop', 2, 20);
       rg.destroy();
 
-      const particles = this.add.particles(0, 0, 'rain_drop', {
-        x: { min: -1000, max: 2000 },
-        y: { min: -1000, max: 1500 },
-        lifespan: 1000,
-        speedY: { min: 400, max: 600 },
-        speedX: { min: -50, max: 50 },
-        angle: 90,
-        quantity: 2,
-        blendMode: 'ADD'
-      });
-      particles.setDepth(10);
-      this.rainEmitter = particles;
+      this.rainEmitter = this.add
+        .particles(0, 0, 'rain_drop', {
+          x: { min: -1000, max: 2000 },
+          y: { min: -1000, max: 1500 },
+          lifespan: 1000,
+          speedY: { min: 400, max: 600 },
+          speedX: { min: -50, max: 50 },
+          angle: 90,
+          quantity: 2,
+          blendMode: 'ADD',
+        })
+        .setDepth(10);
+    }
 
-      // Subtle town fog overlay
-      this.add.rectangle(0, 0, layout.worldWidth, layout.worldHeight, 0x07061a, 0.2).setOrigin(0, 0).setDepth(5).setBlendMode(Phaser.BlendModes.SCREEN);
-      
-    } else if (trackId === 'starcourt-run') {
-      // Subtle mall neon glow overlay
-      this.add.rectangle(0, 0, layout.worldWidth, layout.worldHeight, 0x1f0033, 0.1).setOrigin(0, 0).setDepth(5).setBlendMode(Phaser.BlendModes.SCREEN);
-      
-    } else if (trackId === 'hawkins-forest') {
-      // Dense blue forest fog
-      this.add.rectangle(0, 0, layout.worldWidth, layout.worldHeight, 0x4466aa, 0.15).setOrigin(0, 0).setDepth(5).setBlendMode(Phaser.BlendModes.SCREEN);
-      
-    } else if (trackId === 'hawkins-lab') {
-      // Cold industrial atmosphere
-      this.add.rectangle(0, 0, layout.worldWidth, layout.worldHeight, 0x112233, 0.1).setOrigin(0, 0).setDepth(5).setBlendMode(Phaser.BlendModes.SCREEN);
-      
-    } else if (trackId === 'upside-down') {
-      const rg = this.make.graphics({x:0, y:0}, false);
-      rg.fillStyle(0xffaabb, 0.6);
-      rg.fillCircle(2, 2, 2);
-      rg.generateTexture('spore', 4, 4);
-      rg.destroy();
-
-      const particles = this.add.particles(0, 0, 'spore', {
-        x: { min: -1000, max: 2000 },
-        y: { min: -1000, max: 1500 },
-        lifespan: 4000,
-        speedY: { min: -30, max: 30 },
-        speedX: { min: -40, max: 20 },
-        scale: { start: 0, end: 1.5, ease: 'Sine.easeInOut' },
-        alpha: { start: 0, end: 0.8, ease: 'Sine.easeInOut' },
-        quantity: 1,
-        blendMode: 'SCREEN'
-      });
-      particles.setDepth(10);
-      this.rainEmitter = particles; 
-
-      // Deep red/crimson fog overlay
-      this.add.rectangle(0, 0, layout.worldWidth, layout.worldHeight, 0x1f000a, 0.25).setOrigin(0, 0).setDepth(5).setBlendMode(Phaser.BlendModes.SCREEN);
-      
+    // The Vecna presence is specific to the Upside Down, so it stays a
+    // per-track case rather than moving into the theme.
+    if (trackId === 'upside-down') {
       const heading = this.session.player.physics.heading;
       const px = this.session.player.physics.x;
       const py = this.session.player.physics.y;
@@ -225,6 +215,18 @@ export class GameScene extends Phaser.Scene {
     };
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, releaseAudio);
     this.events.once(Phaser.Scenes.Events.DESTROY, releaseAudio);
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.teardownAtmosphere());
+  }
+
+  /**
+   * The atmosphere's fog sheets and mote emitter are display objects this scene
+   * created, so they are torn down with it. Phaser frees them on a full destroy
+   * anyway, but a plain `scene.restart()` (the R key) does not, and that is
+   * exactly the path that would stack one set of fog layers per attempt.
+   */
+  private teardownAtmosphere(): void {
+    this.atmosphere?.destroy();
+    this.atmosphere = undefined;
   }
 
   override update(_time: number, deltaMs: number): void {
@@ -335,6 +337,10 @@ export class GameScene extends Phaser.Scene {
     if (this.rainEmitter) {
       this.rainEmitter.setPosition(this.cameras.main.scrollX + this.cameras.main.width / 2, this.cameras.main.scrollY);
     }
+
+    // Fog and motes track the camera. Runs every frame but only repositions
+    // existing objects -- no allocation, no filters.
+    this.atmosphere?.update(this.cameras.main, GAME.width, GAME.height);
 
     // The flash belongs to the moment the lights go out. A lap transition is
     // still a live race, so resuming from the card must not flash it again.

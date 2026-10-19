@@ -249,3 +249,12 @@ export const TRACKS: Readonly<Record<string, TrackDefinition>> = {
 export function getTrackDefinition(id: string): TrackDefinition {
   return TRACKS[id] ?? HAWKINS_STREETS;
 }
+
+/**
+ * Every track id the game can race, in registration order.
+ *
+ * Read from `TRACKS` rather than restated, so adding a track to that table is
+ * enough: it turns up here, is theme-checked by the harnesses and validated by
+ * the world tests without anyone remembering to update a second list.
+ */
+export const PLAYABLE_TRACK_IDS: readonly string[] = Object.keys(TRACKS);
