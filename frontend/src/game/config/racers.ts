@@ -2,6 +2,7 @@ import type { Car, CarId } from '../../data/cars';
 import { CARS } from '../../data/cars';
 import type { Character, CharacterId } from '../../data/characters';
 import { CHARACTERS } from '../../data/characters';
+import { DIFFICULTIES, scaleAiProfile, type Difficulty } from './difficulty';
 
 export const RACER_COUNT = 4;
 
@@ -21,6 +22,19 @@ export interface AiProfile {
   lineBias: number;
   /** Per-driver variation so the same car does not drive identically. */
   seed: number;
+  /**
+   * Multiplier on how often the driver re-reads the road and re-picks its lane.
+   * 1 is the designed cadence; above that the driver commits to a line later and
+   * runs wider through the corner it did not see coming. Set from the race
+   * difficulty -- see `config/difficulty`.
+   */
+  reaction: number;
+  /**
+   * Fraction of the steering-derived corner limit this driver will actually
+   * use. Capped at 1, because past 1 the car understeers off the road whatever
+   * the controller does. Set from the race difficulty.
+   */
+  grip: number;
 }
 
 /**
@@ -32,10 +46,10 @@ export interface AiProfile {
  * eagerly they commit to a pass, and how much nitro they burn.
  */
 const AI_PROFILES: Record<string, AiProfile> = {
-  max:   { cornerConfidence: 0.99, pace: 0.99, nitroEagerness: 0.30, overtaking: 0.88, stuckSeconds: 1.0, lineBias:  0.20, seed: 0.11 },
-  mike:  { cornerConfidence: 1.00, pace: 1.00, nitroEagerness: 0.44, overtaking: 0.72, stuckSeconds: 0.8, lineBias: -0.24, seed: 0.37 },
-  dustin:{ cornerConfidence: 0.98, pace: 0.98, nitroEagerness: 0.80, overtaking: 0.96, stuckSeconds: 0.7, lineBias:  0.34, seed: 0.63 },
-  steve: { cornerConfidence: 0.99, pace: 0.99, nitroEagerness: 0.45, overtaking: 0.76, stuckSeconds: 0.9, lineBias: 0.0,  seed: 0.50 },
+  max:   { cornerConfidence: 0.99, pace: 0.99, nitroEagerness: 0.30, overtaking: 0.88, stuckSeconds: 1.0, lineBias:  0.20, seed: 0.11, reaction: 1, grip: 1 },
+  mike:  { cornerConfidence: 1.00, pace: 1.00, nitroEagerness: 0.44, overtaking: 0.72, stuckSeconds: 0.8, lineBias: -0.24, seed: 0.37, reaction: 1, grip: 1 },
+  dustin:{ cornerConfidence: 0.98, pace: 0.98, nitroEagerness: 0.80, overtaking: 0.96, stuckSeconds: 0.7, lineBias:  0.34, seed: 0.63, reaction: 1, grip: 1 },
+  steve: { cornerConfidence: 0.99, pace: 0.99, nitroEagerness: 0.45, overtaking: 0.76, stuckSeconds: 0.9, lineBias: 0.0,  seed: 0.50, reaction: 1, grip: 1 },
 };
 
 export function getAiProfile(characterId: string): AiProfile {
@@ -53,6 +67,13 @@ export interface RacerConfig {
   isPlayer: boolean;
   /** Player cars keep their chosen look; AI get distinct paint from their driver. */
   stats: { speed: number; acceleration: number; handling: number };
+  /**
+   * The resolved driving policy for this car, difficulty already applied.
+   * Carried on the config so the session builds exactly the driver the grid was
+   * built with, instead of re-deriving one from the character id and letting the
+   * two disagree. Null on the player, who is driven by the keyboard.
+   */
+  aiProfile: AiProfile | null;
 }
 
 /**
@@ -124,17 +145,45 @@ function rotate<T>(items: readonly T[], by: number): T[] {
  * index spreads it evenly: across all five player choices every driver sits out
  * exactly once, so each appears in three of five grids.
  */
-function pickOpponents(character: Character, rotation: number): Character[] {
+function pickOpponents(character: Character, rotation: number, count: number): Character[] {
   const remaining = CHARACTERS.filter((c) => c.id !== character.id);
-  return rotate(remaining, rotation).slice(0, RACER_COUNT - 1);
+  return rotate(remaining, rotation).slice(0, count);
+}
+
+/** How the grid is built. Defaults describe a normal Quick Race. */
+export interface GridOptions {
+  /** Scales every AI driver. Defaults to normal. */
+  difficulty?: Difficulty;
+  /**
+   * Cars on the grid including the player. Clamped to what the roster can
+   * actually supply, so this can only ever reduce the field.
+   */
+  fieldSize?: number;
+  /**
+   * Time Trial: the player alone on track. No opponents are built at all, so
+   * there is nothing to show a position against.
+   */
+  solo?: boolean;
 }
 
 /**
  * Builds the four-car grid. The player keeps the car and driver they chose; the
  * AI field is filled from the drivers they did NOT pick, driving the cars they
  * did not choose (repeating a chassis if the garage runs out).
+ *
+ * The field size and the AI difficulty both come from the race setup, so an Easy
+ * Quick Race genuinely races fewer, slower opponents rather than relabelling the
+ * same four cars.
  */
-export function buildGrid(character: Character, car: Car): RacerConfig[] {
+export function buildGrid(character: Character, car: Car, options: GridOptions = {}): RacerConfig[] {
+  const difficulty = options.difficulty ?? DIFFICULTIES.normal;
+
+  // The roster is the hard ceiling: one driver per character, so a grid can
+  // never ask for more cars than there are drivers to put in them.
+  const maxField = Math.min(RACER_COUNT, CHARACTERS.length);
+  const requested = options.solo ? 1 : options.fieldSize ?? difficulty.fieldSize;
+  const fieldSize = Math.max(1, Math.min(requested, maxField));
+
   const racers: RacerConfig[] = [{
     characterId: character.id,
     characterName: character.name,
@@ -143,11 +192,14 @@ export function buildGrid(character: Character, car: Car): RacerConfig[] {
     carName: car.name,
     isPlayer: true,
     stats: { speed: car.stats.speed, acceleration: car.stats.acceleration, handling: car.stats.handling },
+    aiProfile: null,
   }];
+
+  if (fieldSize <= 1) return racers;
 
   const rotation = fieldRotation(character);
   const unusedCars = rotate(CARS.filter((c) => c.id !== car.id), rotation);
-  const opponents = pickOpponents(character, rotation);
+  const opponents = pickOpponents(character, rotation, fieldSize - 1);
 
   opponents.forEach((opponent, i) => {
     const chassis = aiCarFor(i, unusedCars, car);
@@ -163,6 +215,9 @@ export function buildGrid(character: Character, car: Car): RacerConfig[] {
         acceleration: Math.round((chassis.stats.acceleration + opponent.stats.acceleration) / 2),
         handling: Math.round((chassis.stats.handling + opponent.stats.handling) / 2),
       },
+      // Resolved once, here, so the driver the session builds is the driver the
+      // grid was built with.
+      aiProfile: scaleAiProfile(getAiProfile(opponent.id), difficulty),
     });
   });
 

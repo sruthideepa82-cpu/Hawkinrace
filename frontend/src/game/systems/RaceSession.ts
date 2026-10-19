@@ -56,7 +56,9 @@ export class Racer {
       ? driverFor(config, this.tuning)
       : config.isPlayer
         ? null
-        : new AiDriver(getAiProfile(config.characterId), this.tuning);
+        // The grid resolved the driver policy (difficulty already applied) and
+        // put it on the config, so the session builds exactly that driver.
+        : new AiDriver(config.aiProfile ?? getAiProfile(config.characterId), this.tuning);
 
     this.physics.reset(0, 0, 0);
   }
@@ -101,6 +103,14 @@ export interface HudData extends RaceSnapshot {
   rivalsFinished: number;
   /** The "LAP COMPLETE" card, while it is up. Null otherwise. */
   lapTransition: LapTransitionData | null;
+  /**
+   * True when the player is alone on track. The HUD swaps to a time-trial
+   * readout and must NOT draw a position or a classification, because there is
+   * nothing to be ranked against -- showing `1/1` would be inventing a race.
+   */
+  isTimeTrial: boolean;
+  /** Fastest lap of the session so far, or null before the first lap is banked. */
+  bestLapMs: number | null;
 }
 
 /**
@@ -137,6 +147,8 @@ export interface HudPayload extends HudData {
   cameraRotation: number;
   /** Active camera view name, for the HUD label. */
   view: string;
+  /** Whether audio is muted, so the HUD can show the state of the M key. */
+  muted: boolean;
 }
 
 const GRID_COLUMNS = 2;
@@ -164,6 +176,11 @@ export interface RaceSessionOptions {
    * study pure race physics without the challenge rule ending the run early.
    */
   collisionFailsChallenge?: boolean;
+  /**
+   * Which rules the race runs under. `time-trial` runs a solo grid with no
+   * classification and no "beaten to the flag" failure. Defaults to Quick Race.
+   */
+  mode?: 'quick-race' | 'time-trial';
 }
 
 export class RaceSession {
@@ -171,6 +188,8 @@ export class RaceSession {
   readonly racers: Racer[];
   readonly player: Racer;
   readonly positionManager: RacePositionManager;
+  /** Which rules this race runs under. See `RaceSessionOptions.mode`. */
+  readonly mode: 'quick-race' | 'time-trial';
   /** See `RaceSessionOptions`. On in the game. */
   private readonly collisionFailsChallenge: boolean;
   /**
@@ -188,6 +207,7 @@ export class RaceSession {
   ) {
     const isUpsideDown = layout.definition.id === 'upside-down';
     this.collisionFailsChallenge = options.collisionFailsChallenge ?? true;
+    this.mode = options.mode ?? 'quick-race';
     this.race = new RaceManager(RACE.countdownSeconds, isUpsideDown ? 5.5 : 3.5);
     this.racers = configs.map((c) => new Racer(c, layout, driverFor));
 
@@ -382,14 +402,33 @@ export class RaceSession {
       this.race.finish();
       return;
     }
-    if (this.aiFinishedCount() >= this.aiCount) {
+    // Time Trial has nobody to be beaten by, so the rule is simply absent --
+    // not "0 of 0 finished", which would end the race on its first step.
+    if (this.aiCount > 0 && this.aiFinishedCount() >= this.aiCount) {
       this.race.fail('outrun');
     }
   }
 
-  /** Number of AI cars on the grid (every car that is not the player's). */
+  /**
+   * Number of AI cars on the grid (every car that is not the player's).
+   *
+   * Time Trial builds a solo grid, so this is 0 -- which makes the "everyone
+   * finished ahead of you" rule meaningless rather than instantly true. Every
+   * caller that could read `0 >= 0` as a loss has to exclude Time Trial first;
+   * `resolveOutcome` below does exactly that.
+   */
   private get aiCount(): number {
     return this.racers.filter((r) => !r.isPlayer).length;
+  }
+
+  /** True when the player is racing alone against the clock. */
+  get isTimeTrial(): boolean {
+    return this.mode === 'time-trial';
+  }
+
+  /** How many cars are on the grid, the player included. */
+  get fieldSize(): number {
+    return this.racers.length;
   }
 
   /** How many AI cars have taken the chequered flag so far. */
@@ -572,12 +611,17 @@ export class RaceSession {
       ...this.race.snapshot(),
       speedKmh: Math.round(this.player.physics.speed * CAR.speedDisplayFactor),
       nitro: this.player.nitro.fraction,
-      playerPosition: me.position,
+      // In a Time Trial there is no classification to place the player in, so
+      // this is reported as 0 rather than a fabricated "1 / 1". Nothing reads it
+      // in that mode; the HUD checks `isTimeTrial` first.
+      playerPosition: this.isTimeTrial ? 0 : me.position,
       playerLap: me.lap,
       totalLaps: me.totalLaps,
       standings: board,
       rivalsFinished: this.racers.filter((r) => r.finished).length,
       lapTransition: this.lapTransitionData(),
+      isTimeTrial: this.isTimeTrial,
+      bestLapMs: this.player.laps.bestLapMs,
     };
   }
 
@@ -631,6 +675,7 @@ export class RaceSession {
     return {
       outcome,
       failureReason,
+      mode: this.mode,
       // A completed run always crossed every lap without a collision, so its
       // time alone decides the stars. Failures never earn any.
       stars: outcome === 'finished' ? starsForTime(timeMs) : 0,
@@ -639,7 +684,9 @@ export class RaceSession {
       lapsCompleted: me.laps.snapshot().lap,
       totalLaps: RACE.totalLaps,
       standings: board,
-      playerPosition: board.find((s) => s.isPlayer)?.position ?? this.racers.length,
+      // 0 in a Time Trial: there is no field, so there is no finishing slot.
+      // The results screen reads `mode` before it reads this.
+      playerPosition: this.isTimeTrial ? 0 : board.find((s) => s.isPlayer)?.position ?? this.racers.length,
       playerBestLapMs: me.laps.bestLapMs,
       aiFinishedCount: this.aiFinishedCount(),
     };

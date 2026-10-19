@@ -39,10 +39,16 @@ const MAX_LOOKAHEAD_RADIANS = 0.18;
 
 /**
  * Lane drift speed, radians per decision tick. Slow on purpose: the target lane
- * is re-chosen every 0.18s, and a fast sine there makes the car weave across the
- * road several times a lap instead of settling on a line.
+ * is re-chosen every `LANE_DECISION_INTERVAL`, and a fast sine there makes the
+ * car weave across the road several times a lap instead of settling on a line.
  */
 const LANE_WANDER_RATE = 0.18;
+
+/**
+ * How often the driver re-reads the road and re-picks its line, in seconds.
+ * Scaled by the difficulty's `reaction`, so a slower driver commits later.
+ */
+const LANE_DECISION_INTERVAL = 0.18;
 
 /** How far ahead the lookahead radius is measured, in px. */
 const LOOKAHEAD_RADIUS_WINDOW = 160;
@@ -175,9 +181,13 @@ export class AiDriver {
     }
 
     // Where on the road should we be aiming laterally?
+    // The cadence is the driver's reaction time: an Easy driver re-reads the
+    // road half as often, so it commits to a line later and runs wider through
+    // the corner it did not see coming. That is the behaviour difference -- the
+    // steering controller below is identical at every difficulty.
     this.decideIn -= dt;
     if (this.decideIn <= 0) {
-      this.decideIn = 0.18;
+      this.decideIn = LANE_DECISION_INTERVAL * this.profile.reaction;
       this.laneTarget = this.chooseLane(layout, self, rivals, halfRoad, here.distance, lateral);
     }
 
@@ -216,8 +226,14 @@ export class AiDriver {
     // Corner speed: the tightest radius ahead sets how fast we dare to be.
     const brakeWindow = clamp(120 + Math.max(0, speed) * 1.15, 200, 620);
     const radius = layout.cornerRadiusAhead(here.fraction, brakeWindow);
+    // Two ceilings apply. `grip` scales the tyre-derived limit, so a driver that
+    // trusts the car less carries less corner speed and runs wide -- the real
+    // behavioural difference between difficulties. `slideLimit` is the hard
+    // understeer guard and is deliberately NOT scaled: past it the car leaves
+    // the road whatever the driver believes.
     const cornerLimit = Number.isFinite(radius)
-      ? Math.min(this.gripLimit(radius), this.slideLimit(radius)) * this.profile.cornerConfidence
+      ? Math.min(this.gripLimit(radius) * this.profile.grip, this.slideLimit(radius)) *
+        this.profile.cornerConfidence
       : Number.POSITIVE_INFINITY;
 
     let targetSpeed = Math.min(this.tuning.maxSpeed * this.profile.pace, cornerLimit);

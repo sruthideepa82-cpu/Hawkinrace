@@ -20,6 +20,12 @@ export interface RaceConfig {
   car: RaceCarConfig;
   trackId: string;
   modeId: string;
+  /**
+   * AI difficulty for Quick Race. Ignored in a Time Trial, which has no AI.
+   * A missing or unknown value falls back to normal rather than throwing, so an
+   * older build's config still starts a race.
+   */
+  difficultyId?: string;
 }
 
 /** One row of the live/final leaderboard. */
@@ -66,6 +72,12 @@ export interface RaceResult {
   outcome: RaceOutcome;
   /** Why the challenge failed, or null when the player completed it. */
   failureReason: RaceFailureReason | null;
+  /**
+   * Which rules the race ran under. `time-trial` means a solo grid: there was no
+   * classification, so `playerPosition` is 0 and the results screen must not draw
+   * a finishing order or a position.
+   */
+  mode: 'quick-race' | 'time-trial';
   /**
    * Star rating for a completed run, 0-3. Always 0 on a failure. See
    * `CHALLENGE` in GameConfig for the thresholds.

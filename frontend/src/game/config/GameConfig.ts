@@ -53,6 +53,8 @@ export const CONTROLS = {
   restart: ['R'],
   camera: ['C', 'V'],
   pause: ['P'],
+  /** Mutes and unmutes race audio. The preference persists between races. */
+  mute: ['M'],
   /** Development-only collision overlay. Ignored in a production build. */
   debug: ['B'],
 } as const;

@@ -202,6 +202,8 @@ const { HudScene } = await import('../src/game/scenes/HudScene.ts');
 const { CHARACTERS } = await import('../src/data/characters.ts');
 const { CARS } = await import('../src/data/cars.ts');
 const { TRACKS } = await import('../src/data/tracks.ts');
+const { AudioManager } = await import('../src/game/systems/AudioManager.ts');
+const audioHolders = () => AudioManager.get().holderCount;
 
 let failures = 0;
 function check(label: string, ok: boolean, detail = '') {
@@ -253,7 +255,7 @@ const settle = async (ms: number) => {
   while (Date.now() < until) await new Promise((r) => setTimeout(r, 20));
 };
 
-const KEYCODES: Record<string, number> = { W: 87, A: 65, S: 83, D: 68, P: 80 };
+const KEYCODES: Record<string, number> = { W: 87, A: 65, S: 83, D: 68, P: 80, M: 77 };
 
 function keyEvent(type: 'keydown' | 'keyup', key: string, keyCode: number): any {
   return {
@@ -421,6 +423,35 @@ console.log('\n[scene] pause works through the real scene');
   releaseAll();
 }
 
+console.log('\n[scene] audio is acquired once and released on shutdown');
+{
+  // The scene holds a reference count on the shared audio manager, so a restart
+  // cannot end up with two scenes each driving one context. This asserts the
+  // count, which is the only thing that could leak.
+  const before = audioHolders();
+
+  // Force a restart, which shuts the scene down and runs it back up.
+  const scene = sceneOf(SCENE_KEYS.game);
+  scene.scene.restart();
+  await settle(400);
+
+  check('a scene restart does not leak an audio holder', audioHolders() <= before + 1,
+    `${before} -> ${audioHolders()}`);
+  check('audio holders stay bounded across restarts', audioHolders() < 8, `${audioHolders()} holders`);
+
+  // Muting must work from inside the scene and survive as a preference.
+  const manager = AudioManager.get();
+  const wasMuted = manager.isMuted();
+  await tap('M');
+  check('M toggles audio from inside the scene', manager.isMuted() !== wasMuted,
+    `${wasMuted} -> ${manager.isMuted()}`);
+  const nowMuted = manager.isMuted();
+  await tap('M');
+  check('M toggles back', manager.isMuted() !== nowMuted);
+
+  check('the race scene is still alive after the audio work', sceneOf(SCENE_KEYS.game).scene.isActive() === true);
+}
+
 console.log('\n[scene] nothing is handed to React while the race is still on');
 {
   // The results handoff is the one thing the scene pushes to React, and it must
@@ -432,6 +463,12 @@ console.log('\n[scene] nothing is handed to React while the race is still on');
   check('at most one result is ever handed over', results.length <= 1, `${results.length}`);
 }
 
+const holdersBeforeDestroy = audioHolders();
 game.destroy(true);
+// `destroy(true)` tears the scenes down, so the race scene's shutdown handler
+// must have run and dropped its reference. Give Phaser a turn to drain.
+await settle(120);
+check('destroying the game releases the audio holder', audioHolders() < holdersBeforeDestroy,
+  `${holdersBeforeDestroy} -> ${audioHolders()}`);
 console.log(failures === 0 ? '\n=== all scene checks passed ===' : `\n=== ${failures} SCENE CHECKS FAILED ===`);
 process.exit(failures === 0 ? 0 : 1);

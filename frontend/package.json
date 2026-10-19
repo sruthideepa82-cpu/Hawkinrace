@@ -8,14 +8,16 @@
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "typecheck": "tsc -b --noEmit",
-    "test": "npm run typecheck && npm run test:physics && npm run test:collision && npm run test:geometry && npm run test:race && npm run test:states && npm run test:input && npm run test:scene",
+    "test": "npm run typecheck && npm run test:physics && npm run test:collision && npm run test:geometry && npm run test:race && npm run test:states && npm run test:input && npm run test:scene && npm run test:phase2 && npm run test:audio",
     "test:physics": "node --experimental-transform-types --no-warnings --import ./tools/register.mjs tools/physics.ts",
     "test:collision": "node --experimental-transform-types --no-warnings --import ./tools/register.mjs tools/wallCollision.ts",
     "test:geometry": "node --experimental-transform-types --no-warnings --import ./tools/register.mjs tools/geometryTest.ts",
     "test:race": "node --experimental-transform-types --no-warnings --import ./tools/register.mjs tools/raceSim.ts",
     "test:states": "node --experimental-transform-types --no-warnings --import ./tools/register.mjs tools/raceStates.ts",
     "test:input": "node --experimental-transform-types --no-warnings --import ./tools/register.mjs tools/inputProbe.ts",
-    "test:scene": "node --experimental-transform-types --no-warnings --import ./tools/register.mjs tools/sceneProbe.ts"
+    "test:scene": "node --experimental-transform-types --no-warnings --import ./tools/register.mjs tools/sceneProbe.ts",
+    "test:phase2": "node --experimental-transform-types --no-warnings --import ./tools/register.mjs tools/phase2.ts",
+    "test:audio": "node --experimental-transform-types --no-warnings --import ./tools/register.mjs tools/audio.ts"
   },
   "dependencies": {
     "jimp": "^1.6.1",

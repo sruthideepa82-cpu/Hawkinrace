@@ -2,6 +2,8 @@ import Phaser from 'phaser';
 import { getRaceBridge, type RaceBridge } from '../bridge';
 import { GAME_EVENTS, SCENE_KEYS } from '../config/GameConfig';
 import { getTrackDefinition } from '../config/tracks';
+import { getDifficulty } from '../config/difficulty';
+import { isTimeTrialMode } from '../../data/gameModes';
 import { buildGrid } from '../config/racers';
 import { CameraRig } from '../entities/CameraRig';
 import { PlayerCar } from '../entities/PlayerCar';
@@ -10,6 +12,7 @@ import { ensureParticleTexture } from '../entities/carTexture';
 import { TrackLayout } from '../entities/TrackLayout';
 import { TrackRenderer } from '../entities/TrackRenderer';
 import { InputController } from '../systems/InputController';
+import { AudioManager, RaceAudioDriver } from '../systems/AudioManager';
 import { RaceSession, type Racer } from '../systems/RaceSession';
 import { CHARACTERS } from '../../data/characters';
 import { CARS } from '../../data/cars';
@@ -41,6 +44,8 @@ export class GameScene extends Phaser.Scene {
   private vecna?: VecnaEntity;
   private supernaturalSystem?: SupernaturalSystem;
   private collisionDebug!: CollisionDebug;
+  /** Race sound. One shared manager, so a scene restart cannot double it up. */
+  private audioDriver!: RaceAudioDriver;
 
   constructor() {
     super(SCENE_KEYS.game);
@@ -65,14 +70,17 @@ export class GameScene extends Phaser.Scene {
     new TrackRenderer(this, layout);
 
     // The player keeps the driver and car they picked; the AI field is built
-    // around them from the drivers and cars they did not choose.
+    // around them from the drivers and cars they did not choose, at the
+    // difficulty the race was set up with. A Time Trial builds a solo grid.
     const character = CHARACTERS.find((c) => c.id === this.bridge.config.characterId) ?? CHARACTERS[0];
     const car = CARS.find((c) => c.id === this.bridge.config.car.id) ?? CARS[0];
-    const grid = buildGrid(character, car);
+    const mode = isTimeTrialMode(this.bridge.config.modeId) ? 'time-trial' : 'quick-race';
+    const difficulty = getDifficulty(this.bridge.config.difficultyId);
+    const grid = buildGrid(character, car, { difficulty, solo: mode === 'time-trial' });
     const playerConfig = grid.find((g) => g.isPlayer)!;
     const aiConfigs = grid.filter((g) => !g.isPlayer);
 
-    this.session = new RaceSession(layout, grid);
+    this.session = new RaceSession(layout, grid, undefined, { mode });
     this.playerCar = new PlayerCar(this, playerConfig, layout.worldWidth, layout.worldHeight);
     for (const config of aiConfigs) {
       const racer = this.session.racers.find((r) => r.config === config);
@@ -196,6 +204,27 @@ export class GameScene extends Phaser.Scene {
     // Development-only collision overlay. `available` is false in a production
     // build, so the key does nothing there and the code is never constructed.
     this.collisionDebug = new CollisionDebug(this, layout);
+
+    // Audio. The manager is a process-wide singleton and is reference counted,
+    // so a restart acquires/releases rather than rebuilding a second context
+    // beside the first. The context itself is only created on a real keypress --
+    // see `AudioManager.unlock` -- because browsers block it until then.
+    //
+    // The release is latched and wired to BOTH shutdown events on purpose: a
+    // restart raises SHUTDOWN, but tearing the whole game down (returning to
+    // the menu) raises DESTROY, and an unwired release there leaves the holder
+    // count permanently high.
+    AudioManager.get().acquire();
+    this.audioDriver = new RaceAudioDriver(AudioManager.get());
+    this.audioDriver.reset();
+    let audioReleased = false;
+    const releaseAudio = () => {
+      if (audioReleased) return;
+      audioReleased = true;
+      AudioManager.get().release();
+    };
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, releaseAudio);
+    this.events.once(Phaser.Scenes.Events.DESTROY, releaseAudio);
   }
 
   override update(_time: number, deltaMs: number): void {
@@ -221,6 +250,12 @@ export class GameScene extends Phaser.Scene {
       this.collisionDebug.toggle();
     }
 
+    // Mute toggle, and the audio unlock. The unlock is attempted on ANY key, and
+    // only ever from inside this input handler, so it lands inside a real user
+    // gesture. `unlock` is idempotent, and a muted manager short-circuits it.
+    if (this.inputController.mutePressed()) AudioManager.get().toggleMute();
+    if (this.inputController.anyKeyPressed()) AudioManager.get().unlock();
+
     const isOver = race.isOver;
     const isPaused = race.isPaused;
     // A frozen race banks no time. The frame it was frozen on must not be paid
@@ -245,7 +280,10 @@ export class GameScene extends Phaser.Scene {
     // Play the impact here, before the failure handoff, so the screen shake
     // reads as the cause rather than an effect that appears out of nowhere.
     const impact = this.session.consumePlayerCollision();
-    if (impact) this.playImpactEffect(impact.impact);
+    if (impact) {
+      this.playImpactEffect(impact.impact);
+      this.audioDriver.collision(Math.min(1, impact.impact / 360));
+    }
 
     // 1. Player view: full effects.
     const player = this.session.player;
@@ -322,6 +360,19 @@ export class GameScene extends Phaser.Scene {
         .map((r) => ({ x: r.physics.x, y: r.physics.y, color: r.config.color })),
       cameraRotation: this.cameraRig.screenRotation,
       view: this.cameraRig.viewName,
+      muted: AudioManager.get().isMuted(),
+    });
+
+    // Audio runs last, off the same snapshot the HUD just drew, so the engine
+    // note and the visible speed can never disagree.
+    this.audioDriver.update({
+      state: hud.state,
+      countdownRemainingMs: hud.countdownRemainingMs,
+      speed,
+      referenceSpeed: player.tuning.maxSpeed,
+      boosting: player.nitro.active,
+      playerLap: hud.playerLap,
+      totalLaps: hud.totalLaps,
     });
   }
 

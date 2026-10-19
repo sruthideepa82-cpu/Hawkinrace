@@ -33,7 +33,106 @@ export function ResultsPage() {
   if (result.outcome === 'failed') {
     return <ChallengeFailed result={result} onRetry={retry} onTrackSelect={trackSelect} />;
   }
+  // A Time Trial ran solo: there was no field to be classified in, so the
+  // screen is a different composition rather than the same one with the
+  // position row deleted.
+  if (result.mode === 'time-trial') {
+    return <TimeTrialComplete result={result} onRetry={retry} onTrackSelect={trackSelect} onMainMenu={mainMenu} />;
+  }
   return <ChallengeCompleted result={result} onRetry={retry} onTrackSelect={trackSelect} onMainMenu={mainMenu} />;
+}
+
+/**
+ * Time Trial completion.
+ *
+ * Shows the lap breakdown and the session's fastest lap, both of which are
+ * recorded per lap by the same LapManager a Quick Race uses. Deliberately shows
+ * no position, no stars-by-position and no finishing order: none of those
+ * existed. The star rating is kept because it is derived purely from the total
+ * time, which a solo run really does earn.
+ */
+function TimeTrialComplete({
+  result,
+  onRetry,
+  onTrackSelect,
+  onMainMenu,
+}: {
+  result: RaceResult;
+  onRetry: () => void;
+  onTrackSelect: () => void;
+  onMainMenu: () => void;
+}) {
+  const stars = Math.max(0, Math.min(MAX_STARS, result.stars));
+  const fastest = result.playerBestLapMs;
+
+  return (
+    <div className="challenge-screen challenge-complete" aria-label="Time trial completed">
+      <div className="challenge-panel">
+        <p className="challenge-eyebrow">HAWKINS: NITRO RUN</p>
+        <h1 className="challenge-title challenge-title-win">TIME TRIAL COMPLETE</h1>
+
+        <div className="challenge-stars" role="img" aria-label={`${stars} of ${MAX_STARS} stars`}>
+          {Array.from({ length: MAX_STARS }, (_, i) => {
+            const earned = i < stars;
+            return (
+              <span
+                key={i}
+                className={`challenge-star${earned ? ' is-earned' : ''}`}
+                style={earned ? { animationDelay: `${0.3 + i * 0.28}s` } : undefined}
+                aria-hidden="true"
+              >
+                ★
+              </span>
+            );
+          })}
+        </div>
+
+        <p className="challenge-message">{starMessage(stars)}</p>
+
+        <div className="challenge-stats">
+          <div className="challenge-stat">
+            <span>LAPS</span>
+            <strong>
+              {result.lapsCompleted} / {result.totalLaps}
+            </strong>
+          </div>
+          <div className="challenge-stat">
+            <span>TOTAL TIME</span>
+            <strong>{formatRaceTime(result.timeMs)}</strong>
+          </div>
+          <div className="challenge-stat">
+            <span>BEST LAP</span>
+            <strong>{fastest ? formatRaceTime(fastest) : '--:--.---'}</strong>
+          </div>
+        </div>
+
+        {/* One row per completed lap, all of them actually driven. */}
+        <div className="challenge-order">
+          <h2 className="challenge-order-title">LAP TIMES</h2>
+          {result.lapTimesMs.map((ms, i) => {
+            const isBest = fastest !== null && ms === fastest;
+            return (
+              <div key={i} className={`challenge-order-row${isBest ? ' is-player' : ''}`}>
+                <span className="co-pos">{String(i + 1).padStart(2, '0')}</span>
+                <span className="co-name">LAP {i + 1}</span>
+                <span className="co-time">{formatRaceTime(ms)}</span>
+              </div>
+            );
+          })}
+        </div>
+
+        <div className="challenge-actions">
+          <NeonButton onClick={onRetry}>RUN IT AGAIN</NeonButton>
+          <NeonButton variant="ghost" onClick={onTrackSelect}>
+            BACK TO TRACK SELECTION
+          </NeonButton>
+          <NeonButton variant="ghost" onClick={onMainMenu}>
+            MAIN MENU
+          </NeonButton>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 /** A short, rating-appropriate line for the completion screen. */

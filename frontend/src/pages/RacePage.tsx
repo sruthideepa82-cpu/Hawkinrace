@@ -2,6 +2,8 @@ import { useEffect, useMemo } from 'react';
 import { GameCanvas } from '../components/GameCanvas';
 import { NeonButton } from '../components/NeonButton';
 import { ResultsPage } from './ResultsPage';
+import { isTimeTrialMode } from '../data/gameModes';
+import { getDifficulty } from '../game/config/difficulty';
 import type { RaceBridge } from '../game/bridge';
 import { useKeyPress } from '../hooks/useKeyPress';
 import { useRouter } from '../router/RouterProvider';
@@ -25,6 +27,10 @@ export function RacePage({ showResults = false }: { showResults?: boolean }) {
   const { screen, navigate } = useRouter();
   const { character, car, track, mode } = selections;
   const ready = isRaceReady(state);
+  // Time Trial runs a solo grid, so the on-screen key hints must not promise a
+  // leaderboard or a position that does not exist.
+  const solo = isTimeTrialMode(mode?.id);
+  const difficultyName = getDifficulty(state.selectedDifficultyId).name;
 
   // Rebuilt whenever a new race starts, or whenever a selection changes.
   //
@@ -48,6 +54,7 @@ export function RacePage({ showResults = false }: { showResults?: boolean }) {
         },
         trackId: track.id,
         modeId: mode.id,
+        difficultyId: state.selectedDifficultyId,
       },
       onRaceComplete: (result) => {
         dispatch({ type: 'RACE_FINISHED', result });
@@ -71,7 +78,7 @@ export function RacePage({ showResults = false }: { showResults?: boolean }) {
         }
       },
     };
-  }, [state.raceKey, character, car, track, mode, dispatch, navigate]);
+  }, [state.raceKey, state.selectedDifficultyId, character, car, track, mode, dispatch, navigate]);
 
   const quit = () => navigate('menu');
   useKeyPress('Escape', quit);
@@ -93,7 +100,8 @@ export function RacePage({ showResults = false }: { showResults?: boolean }) {
         <>
           <NeonButton variant="ghost" className="quit-btn" onClick={quit}>✕ QUIT</NeonButton>
           <footer className="race-hints">
-            <span>W / ↑ accelerate</span><span>S / ↓ brake · reverse</span><span>A D / ← → steer</span><span>SHIFT nitro</span><span>C camera</span><span>P pause</span><span>R restart</span><span>ESC quit</span>
+            <span className="race-mode-label">{solo ? 'TIME TRIAL' : `DIFFICULTY · ${difficultyName.toUpperCase()}`}</span>
+            <span>W / ↑ accelerate</span><span>S / ↓ brake · reverse</span><span>A D / ← → steer</span><span>SHIFT / SPACE nitro</span><span>C camera</span><span>P pause</span><span>M audio</span><span>R restart</span><span>ESC quit</span>
           </footer>
         </>
       )}

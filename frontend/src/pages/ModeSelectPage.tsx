@@ -1,4 +1,5 @@
-import { GAME_MODES } from '../data/gameModes';
+import { GAME_MODES, isTimeTrialMode } from '../data/gameModes';
+import { DIFFICULTIES, DIFFICULTY_ORDER } from '../game/config/difficulty';
 import { useRouter } from '../router/RouterProvider';
 import { useGameStore } from '../store/GameStore';
 import { useKeyPress } from '../hooks/useKeyPress';
@@ -23,6 +24,7 @@ export function ModeSelectPage() {
 
   // Set default selection to first playable mode if none is selected
   const currentModeId = state.selectedGameModeId || 'quick-race';
+  const soloMode = isTimeTrialMode(currentModeId);
 
   return (
     <div className="mode-layout">
@@ -54,7 +56,7 @@ export function ModeSelectPage() {
             const isSelected = currentModeId === m.id;
             const isFeatured = index === 0;
             return (
-              <div 
+              <div
                 key={m.id}
                 className={`mode-card ${isFeatured ? 'featured' : ''} ${isSelected ? 'selected' : ''} ${!m.playable ? 'disabled' : ''}`}
                 onClick={() => {
@@ -75,6 +77,34 @@ export function ModeSelectPage() {
             );
           })}
         </div>
+
+        {/* Difficulty only means something when there is somebody to out-race.
+            A Time Trial runs solo, so the control is hidden rather than shown
+            greyed out and pretending to change something. */}
+        {!soloMode && (
+          <div className="difficulty-row" role="radiogroup" aria-label="AI difficulty">
+            <span className="difficulty-label">DIFFICULTY</span>
+            <div className="difficulty-options">
+              {DIFFICULTY_ORDER.map((id) => {
+                const d = DIFFICULTIES[id];
+                const active = state.selectedDifficultyId === id;
+                return (
+                  <button
+                    key={id}
+                    type="button"
+                    role="radio"
+                    aria-checked={active}
+                    className={`difficulty-chip ${active ? 'is-active' : ''}`}
+                    onClick={() => dispatch({ type: 'SELECT_DIFFICULTY', id })}
+                  >
+                    <span className="difficulty-name">{d.name}</span>
+                    <span className="difficulty-desc">{d.description}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         <footer className="mode-footer">
           <button className="nav-button" onClick={() => navigate('track')}>

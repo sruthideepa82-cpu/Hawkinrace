@@ -26,6 +26,12 @@ export class CarView {
   protected brakeLights!: Phaser.GameObjects.Graphics;
   protected headlights!: Phaser.GameObjects.Graphics;
   private nitroGlow!: Phaser.GameObjects.Image;
+  /**
+   * Exhaust flame left behind while the boost is held. Emits ONLY while
+   * boosting and stops the moment it is not, so the trail can never outlive the
+   * boost and leave a car trailing light with nothing to justify it.
+   */
+  private nitroTrail!: Phaser.GameObjects.Particles.ParticleEmitter;
   protected exhaustEmitter!: Phaser.GameObjects.Particles.ParticleEmitter;
 
   constructor(
@@ -64,6 +70,24 @@ export class CarView {
       .setAlpha(0)
       .setBlendMode(Phaser.BlendModes.ADD)
       .setScale(this.sprite.scaleX);
+
+    // The boost flame. Two emitters at the rear corners so it reads as coming
+    // out of the exhausts rather than from the middle of the car, and tinted
+    // into the game's neon palette so it matches the brake lights and the
+    // ability bar rather than looking like a borrowed asset.
+    this.nitroTrail = scene.add
+      .particles(0, 0, 'particle-dot', {
+        speed: { min: 40, max: 130 },
+        angle: { min: 0, max: 360 },
+        scale: { start: 0.85, end: 0 },
+        alpha: { start: 0.85, end: 0 },
+        tint: [0x9b5cff, 0xff2e63, 0xffd166],
+        lifespan: { min: 220, max: 420 },
+        frequency: 26,
+        blendMode: 'ADD',
+        emitting: false,
+      })
+      .setDepth(9);
   }
 
   sync(physics: CarViewState, opts: CarViewOptions = {}): void {
@@ -81,6 +105,7 @@ export class CarView {
     this.sprite.setPosition(vx, vy).setRotation(heading);
     this.shadow.setPosition(vx - 4, vy + 4).setRotation(heading);
     this.nitroGlow.setPosition(vx, vy).setRotation(heading).setAlpha(opts.boosting ? 0.55 : 0);
+    this.nitroGlow.setTint(opts.boosting ? 0x9b5cff : 0xffffff);
 
     // Headlights
     this.headlights.clear();
@@ -101,6 +126,22 @@ export class CarView {
     this.headlights.lineTo(h2x + Math.cos(heading - 0.2) * 150, h2y + Math.sin(heading - 0.2) * 150);
     this.headlights.lineTo(h2x + Math.cos(heading + 0.2) * 150, h2y + Math.sin(heading + 0.2) * 150);
     this.headlights.fillPath();
+
+    // Boost flame. The emitter is driven straight off the same `boosting` flag that
+    // lit the glow, so the trail and the glow always start and stop together and
+    // neither can be left running by a car that is no longer boosting.
+    const boosting = opts.boosting === true;
+    if (boosting) {
+      const cos = Math.cos(heading);
+      const sin = Math.sin(heading);
+      for (const side of [-1, 1]) {
+        this.nitroTrail.setPosition(x - cos * 26 - sin * 7 * side, y - sin * 26 + cos * 7 * side);
+        this.nitroTrail.emitParticle(1);
+      }
+      this.nitroTrail.setConfig({ frequency: boosting ? 26 : -1 });
+    } else {
+      this.nitroTrail.setConfig({ frequency: -1 });
+    }
 
     // Exhaust
     if (isIdling || (opts.accelerating && opts.speed! < 150)) {
@@ -150,6 +191,7 @@ export class CarView {
     this.headlights.destroy();
     this.exhaustEmitter.destroy();
     this.nitroGlow.destroy();
+    this.nitroTrail.destroy();
   }
 }
 

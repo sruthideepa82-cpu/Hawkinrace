@@ -15,6 +15,10 @@ const LEADER_ROWS = 4;
 /** Screen-space HUD, separate from the world camera. Driven only by events. */
 export class HudScene extends Phaser.Scene {
   private posText!: Phaser.GameObjects.Text;
+  /** Session best lap. Only shown in a Time Trial, where it is the headline. */
+  private bestLapText!: Phaser.GameObjects.Text;
+  private bestLapLabel!: Phaser.GameObjects.Text;
+  private muteText!: Phaser.GameObjects.Text;
   private lapText!: Phaser.GameObjects.Text;
   private timeText!: Phaser.GameObjects.Text;
   private speedText!: Phaser.GameObjects.Text;
@@ -78,11 +82,19 @@ export class HudScene extends Phaser.Scene {
     this.lapText = this.add.text(170, 32, 'LAP 1 / 3', { fontFamily: FONTS.display, fontSize: '28px', color: '#ffffff' }).setOrigin(0, 0.5);
     this.timeText = this.add.text(width - 40, 32, 'TIME 00:00.000', { fontFamily: FONTS.mono, fontSize: '24px', color: '#ffffff' }).setOrigin(1, 0.5);
 
+    // Best lap and the mute indicator, stacked under the top bar on the right.
+    // The best-lap readout starts empty and is only filled in a Time Trial,
+    // where there is no position and no classification to show instead.
+    this.bestLapLabel = this.add.text(width - 40, 80, 'BEST LAP', { fontFamily: FONTS.display, fontSize: '16px', color: '#7a7590' }).setOrigin(1, 0.5).setVisible(false);
+    this.bestLapText = this.add.text(width - 40, 104, '--:--.---', { fontFamily: FONTS.mono, fontSize: '22px', color: '#b8a6ff' }).setOrigin(1, 0.5).setVisible(false);
+    this.muteText = this.add.text(width - 40, 70, '', { fontFamily: FONTS.mono, fontSize: '12px', color: '#7a7590' }).setOrigin(1, 0.5);
+
     // Driver / car label
     const { characterName, car } = getRaceBridge(this.game).config;
     const labelText = this.add.text(width / 2, 32, `${characterName.toUpperCase()}  ·  ${car.name.toUpperCase()}`, { fontFamily: FONTS.mono, fontSize: '18px', color: '#b8a6ff' }).setOrigin(0.5);
 
     this.hudElements.push(topBarBg, topBarLine, this.posText, this.lapText, this.timeText, labelText);
+    this.hudElements.push(this.bestLapLabel, this.bestLapText, this.muteText);
 
     // Live leaderboard, tucked under the top bar on the left.
     this.buildLeaderboard(40, 84);
@@ -334,12 +346,30 @@ export class HudScene extends Phaser.Scene {
     this.updateLapCard(data);
     this.setCard(this.pauseCard, 'pauseCardUp', paused && !over);
 
-    this.posText.setText(`P${data.playerPosition} / ${data.standings.length}`);
+    // A Time Trial has no field, so it has no position and no classification to
+    // show. Drawing `P1 / 1` would be inventing a race the player did not run,
+    // so both are hidden and the best lap takes their place instead.
+    if (data.isTimeTrial) {
+      this.posText.setText('');
+      this.bestLapLabel.setVisible(true);
+      this.bestLapText.setVisible(true);
+      this.bestLapText.setText(data.bestLapMs === null ? '--:--.---' : formatRaceTime(data.bestLapMs));
+      this.bestLapText.setColor(data.bestLapMs === null ? '#7a7590' : '#b8a6ff');
+    } else {
+      this.posText.setText(`P${data.playerPosition} / ${data.standings.length}`);
+      this.bestLapLabel.setVisible(false);
+      this.bestLapText.setVisible(false);
+    }
+
     this.lapText.setText(`LAP ${data.playerLap} / ${data.totalLaps}`);
     this.timeText.setText(`TIME ${formatRaceTime(data.finalTimeMs ?? data.elapsedMs)}`);
     this.speedText.setText(`${String(data.speedKmh).padStart(3, '0')}`);
+    this.muteText.setText(data.muted ? 'AUDIO OFF  [M]' : 'AUDIO ON  [M]');
+    this.muteText.setColor(data.muted ? '#ff5c8a' : '#7a7590');
 
-    this.updateLeaderboard(data.standings);
+    // One leaderboard row in a Time Trial would be a classification of one car,
+    // which is the same invented-race problem as the position readout.
+    this.updateLeaderboard(data.isTimeTrial ? [] : data.standings);
 
     // Nitro bar follows the player's actual tank.
     const fill = Math.max(0, Math.min(1, data.nitro));
@@ -400,10 +430,11 @@ export class HudScene extends Phaser.Scene {
       lap.completedLap >= lap.totalLaps ? 'FINAL LAP' : 'LAP COMPLETE',
     );
     this.lapCardTime.setText(`LAP ${lap.completedLap}  ${formatRaceTime(lap.lapTimeMs)}`);
+    // Solo races have no position to report, and the fastest lap so far is the
+    // number a Time Trial player actually cares about at this moment.
+    const bestText = lap.bestLapMs === null ? '' : `   ·   BEST  ${formatRaceTime(lap.bestLapMs)}`;
     this.lapCardPosition.setText(
-      lap.bestLapMs === null
-        ? `POSITION  P${lap.position} / ${lap.fieldSize}`
-        : `POSITION  P${lap.position} / ${lap.fieldSize}   ·   BEST  ${formatRaceTime(lap.bestLapMs)}`,
+      data.isTimeTrial ? `${bestText.trim() || 'SOLO RUN'}` : `POSITION  P${lap.position} / ${lap.fieldSize}${bestText}`,
     );
     this.lapCardRemaining.setText(
       lap.lapsRemaining <= 1 ? 'FINAL LAP NEXT' : `LAPS REMAINING  ${lap.lapsRemaining}`,

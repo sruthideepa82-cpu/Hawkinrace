@@ -95,6 +95,19 @@ export class InputController {
     return this.anyJustDown(CONTROLS.pause);
   }
 
+  /** Mute toggle. Also JustDown-only, for the same reason. */
+  mutePressed(): boolean {
+    return this.anyJustDown(CONTROLS.mute);
+  }
+
+  /**
+   * True on the first keydown the scene sees. Used to bring the audio context up
+   * inside a real user gesture, which is the only moment a browser will allow it.
+   */
+  anyKeyPressed(): boolean {
+    return Object.values(this.keys).some((k) => Phaser.Input.Keyboard.JustDown(k));
+  }
+
   /**
    * Drops every held key at once.
    *

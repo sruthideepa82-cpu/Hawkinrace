@@ -2,6 +2,7 @@ import { createContext, useContext, useMemo, useReducer, type Dispatch, type Rea
 import { CARS, type Car, type CarId } from '../data/cars';
 import { CHARACTERS, type Character, type CharacterId } from '../data/characters';
 import { GAME_MODES, type GameModeId, type GameModeInfo } from '../data/gameModes';
+import { DIFFICULTIES, type DifficultyId } from '../game/config/difficulty';
 import { TRACKS, type TrackId, type TrackInfo } from '../data/tracks';
 import type { RaceResult } from '../game/bridge';
 
@@ -22,6 +23,8 @@ export interface GameState {
   selectedCarId: CarId | null;
   selectedTrackId: TrackId | null;
   selectedGameModeId: GameModeId | null;
+  /** AI difficulty for Quick Race. Time Trial ignores it -- it has no AI. */
+  selectedDifficultyId: DifficultyId;
   /** Bumped on every race start so the Phaser game is rebuilt. */
   raceKey: number;
   lastResult: RaceResult | null;
@@ -32,6 +35,7 @@ export type GameAction =
   | { type: 'SELECT_CAR'; id: CarId }
   | { type: 'SELECT_TRACK'; id: TrackId }
   | { type: 'SELECT_GAME_MODE'; id: GameModeId }
+  | { type: 'SELECT_DIFFICULTY'; id: DifficultyId }
   | { type: 'START_RACE' }
   | { type: 'RACE_FINISHED'; result: RaceResult };
 
@@ -40,6 +44,7 @@ export const initialState: GameState = {
   selectedCarId: null,
   selectedTrackId: null,
   selectedGameModeId: null,
+  selectedDifficultyId: 'normal',
   raceKey: 0,
   lastResult: null,
 };
@@ -54,6 +59,10 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
       return TRACKS.find((t) => t.id === action.id)?.playable ? { ...state, selectedTrackId: action.id } : state;
     case 'SELECT_GAME_MODE':
       return GAME_MODES.find((m) => m.id === action.id)?.playable ? { ...state, selectedGameModeId: action.id } : state;
+    case 'SELECT_DIFFICULTY':
+      // Guarded against an unknown id: the table is the authority, so a stale
+      // or hand-written action cannot leave a race with no difficulty at all.
+      return DIFFICULTIES[action.id] ? { ...state, selectedDifficultyId: action.id } : state;
     // Rebuilds the Phaser game via the new raceKey and clears the old result.
     case 'START_RACE':
       return { ...state, raceKey: state.raceKey + 1, lastResult: null };
