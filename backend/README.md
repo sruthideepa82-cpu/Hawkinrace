@@ -188,7 +188,7 @@ without starting the app:
 
 ### Adding a migration later
 
-Create `src/main/resources/db/migration/V2__<description>.sql` and restart. Flyway
+Create `src/main/resources/db/migration/V<n>__<description>.sql` and restart. Flyway
 runs it once, in version order, inside a transaction where MySQL supports it.
 Rules:
 
@@ -196,6 +196,27 @@ Rules:
   recorded; changing it makes every later startup fail validation.
 - **Never rename one.** A renamed file looks like a brand-new migration.
 - To undo something, write a new forward migration. Do not reach for `clean`.
+
+### Applied migrations
+
+| Version | File | What it does |
+|---|---|---|
+| V1 | `V1__init.sql` | Base schema: `players`, `races`, reference data, the leaderboard's indexes. |
+| V2 | `V2__auth.sql` | `players.password_hash`, the `auth_tokens` table, `races.idempotency_key` plus its unique index. |
+| V3 | `V3__align_column_types.sql` | `CHAR(64)`/`CHAR(36)` → `VARCHAR(64)`/`VARCHAR(36)` on the two columns V2 added. |
+
+> **V3 exists because `ddl-auto: validate` caught a real mistake.** V2 declared the
+> token hash and race id as `CHAR`, while the JPA entities declared `VARCHAR`.
+> Validation refuses to start on that mismatch, which is the validator working
+> exactly as intended. The fix is a **new** migration rather than an edit to V2,
+> because V2 had already been applied and editing it would invalidate its
+> checksum. Worth recording as an example of why that rule exists.
+
+> **`players.password_hash` is nullable.** V2 runs against a database that
+> already had players, so the column had to accept existing rows. Those legacy
+> accounts **cannot sign in** - there is no password to check. Re-setting a
+> password for them is the only path forward, and nothing in this phase does that
+> automatically.
 
 ### Initialising a fresh database
 
@@ -228,6 +249,7 @@ cars                         tracks
 players ──────────────────── races
   id            PK varchar    id            PK varchar
   display_name     UNIQUE     seq           unique AUTO_INCREMENT
+   password_hash    NULLABLE   idempotency_key  UNIQUE, NULLABLE
   selected_car_id  FK → cars  player_id     FK → players  ON DELETE CASCADE
   created_at                  car_id        FK → cars     ON DELETE RESTRICT
   updated_at                  track_id      FK → tracks   ON DELETE RESTRICT
@@ -237,9 +259,34 @@ players ──────────────────── races
                              elapsed_time_ms > 0
                              best_lap_time_ms <= elapsed_time_ms
                              completed_at
+
+auth_tokens   (Phase 7)
+   id            PK varchar
+   player_id     FK to players  ON DELETE CASCADE
+   token_hash    UNIQUE       SHA-256 of the bearer token
+   created_at
+   expires_at
+   last_used_at
+   revoked_at    NULLABLE
 ```
 
+> `auth_tokens` is a table rather than a signed token because sign-out has to
+> actually work. Anything stateless cannot be revoked without a denylist, which
+> is a table wearing a hat. `token_hash` stores the SHA-256 of the token, never
+> the token itself, so a database dump yields no live sessions. It is indexed on
+> `token_hash`, making the per-request lookup a single index seek.
+>
+> `races.idempotency_key` is **globally unique**, not per player, so two different
+> players cannot collide on one key. A collision across players returns **409**
+> rather than silently returning the other player's row.
+
 ### Design notes
+
+**`players.password_hash` is nullable, and that is not an oversight.** V2 ran
+against a database that already held players, so the column had to tolerate
+existing rows. The consequence is concrete: **those accounts cannot sign in**,
+because there is no password to verify against. Making it `NOT NULL` would have
+required either inventing passwords for real players or dropping them.
 
 **Ids are natural, not surrogate.** Cars and tracks are keyed by the same
 strings the frontend uses (`apex-vulcan`, `hawkins-streets`). There is no
@@ -311,6 +358,8 @@ specific belongs in configuration.
 
 Base path `/api`. All responses are JSON.
 
+### Public routes (no token)
+
 | Method | Path | Success | Purpose |
 |---|---|---|---|
 | GET | `/api/health` | 200 | Status, version, storage backend |
@@ -318,15 +367,32 @@ Base path `/api`. All responses are JSON.
 | GET | `/api/cars/{carId}` | 200 | One car (404 if unknown) |
 | GET | `/api/tracks` | 200 | Track catalogue |
 | GET | `/api/tracks/{trackId}` | 200 | One track (404 if unknown) |
-| GET | `/api/players` | 200 | All profiles |
-| POST | `/api/players` | **201** | Create a profile |
-| GET | `/api/players/{playerId}` | 200 | One profile (404 if unknown) |
-| PUT | `/api/players/{playerId}` | 200 | Replace editable fields |
-| GET | `/api/players/{playerId}/races` | 200 | Race history, newest first |
-| POST | `/api/races` | **201** | Record a completed race |
-| GET | `/api/races` | 200 | All records |
-| GET | `/api/races/{raceId}` | 200 | One record (404 if unknown) |
 | GET | `/api/leaderboard` | 200 | Ranked, sorted, paged |
+| POST | `/api/auth/register` | **201** | Create an account, returns a token |
+| POST | `/api/auth/login` | 200 | Exchange credentials for a token |
+
+### Authenticated routes (`Authorization: Bearer <token>`)
+
+| Method | Path | Success | Purpose |
+|---|---|---|---|
+| GET | `/api/auth/me` | 200 | The session's own profile |
+| POST | `/api/auth/logout` | 204 | Revoke the token used to make this call |
+| GET | `/api/players/me` | 200 | The session's own profile |
+| GET | `/api/players/{playerId}` | 200 | One profile. **404** for any other id |
+| PUT | `/api/players/{playerId}` | 200 | Replace editable fields. **404** for any other id |
+| GET | `/api/players/{playerId}/races` | 200 | Race history, newest first. **404** for any other id |
+| POST | `/api/races` | **201** | Record a completed race. **200** on an `Idempotency-Key` replay |
+| GET | `/api/races` | 200 | The session player's own records only |
+| GET | `/api/races/{raceId}` | 200 | One own record (404 otherwise) |
+
+### Removed in Phase 7
+
+| Method | Path | Was | Now |
+|---|---|---|---|
+| GET | `/api/players` | 200, listing every profile | **Gone.** Use `/api/auth/me` |
+| POST | `/api/players` | **201**, anonymous account creation | **Gone.** Use `/api/auth/register` |
+
+Anything not listed is denied by `anyRequest().denyAll()`.
 
 `GET /api/health` now reports `storage: "mysql"` and `persistent: true`.
 
@@ -378,8 +444,35 @@ using Hibernate's own statistics. Lazy relations are only ever read through
 
 ## Security
 
-**There is still no authentication. Race records remain self-reported and
-unverified.**
+**Players are authenticated. Race records remain self-reported and unverified.**
+
+Authentication answers *who is submitting*. It does not answer *whether the time
+is true*, and those are different questions.
+
+### What Phase 7 added
+
+- **Opaque bearer tokens**, not JWT. 256 bits from `SecureRandom`, stored
+  **SHA-256 hashed**, so a database dump cannot be replayed as live sessions. The
+  cost of skipping JWT is one indexed `SELECT` per authenticated request; the
+  benefit is that sign-out genuinely revokes, which an unsigned token cannot do.
+- **BCrypt** at strength 10.
+- **Sign-in does not enumerate accounts.** An unknown display name still performs
+  a dummy BCrypt encode, so a wrong password and a non-existent user take the
+  same time and return the same error.
+- **`playerId` was deleted from `CreateRaceRequest`**, not ignored. A
+  present-but-unused field is an invitation to trust it again.
+- **Owner scoping.** Every player-owned route returns **404** for someone else's
+  id - deliberately the same answer as an id that does not exist, so the endpoint
+  is not an enumeration oracle.
+- **Idempotent submission** via an `Idempotency-Key` header: a replay returns the
+  row already stored with **200**, not a second row with 201.
+- **A plausibility floor** (`MIN_PLAUSIBLE_LAP_MS = 10_000`) rejects a lap no car
+  could drive. This catches a client dividing by the wrong constant. It is a
+  sanity check, **not** anti-cheat.
+- **CORS moved ahead of authorization.** Registering CORS with the servlet put it
+  behind the security chain, so preflights were refused with 401 and no browser
+  could call the API at all - while curl and the unit tests stayed green, because
+  neither issues a preflight. `CorsTests` now pins the contract.
 
 What Phase 5 added:
 
@@ -391,8 +484,9 @@ What Phase 5 added:
 - **Errors leak nothing.** Constraint violations return a fixed sentence;
   Hibernate's text (which quotes SQL and row values) is never returned.
 
-What did **not** change: anyone may still read, create and update any profile,
-and submit any race for any player. Lap times are not verified in any way.
+What did **not** change: lap times are still reported by the client and are not
+verified in any way. **Results are not cheat-proof.** A token proves the
+submitter's identity; it says nothing about the numbers they sent.
 
 > `persistent: true` means the data **survives a restart**. It does not mean the
 > data is **trustworthy**. Those are different claims and only the first is true.
@@ -406,7 +500,7 @@ cd backend
 .\mvnw.cmd test
 ```
 
-**87 tests, all passing, against a real MySQL 8.4.9.**
+**112 tests, all passing, against a real MySQL 8.4.9.**
 
 | Suite | Covers |
 |---|---|
@@ -574,7 +668,7 @@ backend/
     │   └── resources/
     │       ├── application.yml + dev / prod
     │       └── db/migration/     Flyway, versioned SQL
-    └── test/java/                87 tests
+    └── test/java/                112 tests
 ```
 
 ---

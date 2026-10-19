@@ -40,8 +40,8 @@ public class HealthService {
                 storage,
                 persistent,
                 persistent
-                        ? "MySQL-backed storage. Player-submitted races are still NOT authenticated."
-                        : "NON-DURABLE storage: data resets on restart. Player-submitted races are NOT authenticated.");
+                        ? "MySQL-backed storage. Races require a bearer token and are submitted under the session's player."
+                        : "NON-DURABLE storage: data resets on restart. Races require a bearer token and are submitted under the session's player.");
     }
 
     /** Record count, handy for confirming persistence really did survive. */

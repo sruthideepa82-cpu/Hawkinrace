@@ -85,13 +85,23 @@ $createdRaceIds = New-Object System.Collections.Generic.List[string]
 # Helpers
 # ---------------------------------------------------------------------------
 
+# Bearer token for the account this run registered. Set by Register-Racer.
+$script:Token = $null
+$script:PlayerId = $null
+
 function Invoke-Api {
-    param([string]$Method, [string]$Path, $Body = $null)
+    param([string]$Method, [string]$Path, $Body = $null, [switch]$NoAuth, [hashtable]$Headers = $null)
     $args = @{ Uri = "$base$Path"; Method = $Method; UseBasicParsing = $true; ErrorAction = 'Stop' }
     if ($null -ne $Body) {
         $args['ContentType'] = 'application/json'
         $args['Body'] = ($Body | ConvertTo-Json -Depth 6 -Compress)
     }
+    # Everything player-owned needs the token. Sent by default so a scenario
+    # cannot silently forget it and pass for the wrong reason.
+    if (-not $NoAuth -and $script:Token) {
+        $args['Headers'] = @{ Authorization = "Bearer $script:Token" }
+    }
+    if ($Headers) { $args['Headers'] = $Headers }
     try {
         $r = Invoke-WebRequest @args
         $content = $r.Content
@@ -201,12 +211,15 @@ try {
     Check "GET /api/health returns 200" ($h.status -eq 'UP') $h.status
     Check "storage is reported as mysql" ($h.storage -eq 'mysql') $h.storage
     Check "storage is reported as persistent" ($h.persistent -eq $true)
-    Check "health warns that races are not authenticated" `
-        ($h.message -match 'not authenticated') $h.message
+    Check "health reports that races require a token" `
+        ($h.message -match 'bearer token') $h.message
     $actuator = Invoke-Api GET '/actuator/health'
     Check "actuator health is reachable" ($actuator.Status -eq 200) $actuator.Status
     $envLeak = Invoke-Api GET '/actuator/env'
-    Check "actuator does not expose configuration" ($envLeak.Status -eq 404) $envLeak.Status
+    # Phase 7 puts the actuator behind the security chain, so this is refused at the
+    # edge rather than resolving to a missing handler. Assert the property -- the
+    # configuration is not readable -- rather than which layer refused it.
+    Check "actuator does not expose configuration" ($envLeak.Status -in @(401, 403, 404)) $envLeak.Status
 
     # -- 2 & 3. Catalogues -------------------------------------------------
     Section "2-3. Frontend loads the car and track catalogues"
@@ -228,34 +241,53 @@ try {
     $street = $tracks.Body | Where-Object { $_.id -eq 'hawkins-streets' }
     Check "track reports its lap count" ($street.laps -eq 3) $street.laps
 
-    # -- 4. Player profile -------------------------------------------------
-    Section "4. A player profile can be created and retrieved"
+    # -- 4. Authentication and the player profile ---------------------------
+    Section "4. A player can register, sign in and read their own profile"
     $name = $tag.ToUpper()
-    $mk = Invoke-Api POST '/api/players' @{ displayName = $name; selectedCarId = 'shadow-gt' }
-    Check "POST /api/players returns 201" ($mk.Status -eq 201) $mk.Status
-    $playerId = $mk.Body.id
-    $createdPlayerIds.Add($playerId)
-    Check "server assigned an id" ([bool]$playerId) $playerId
-    Check "display name round-trips" ($mk.Body.displayName -eq $name) $mk.Body.displayName
-    Check "selected car round-trips" ($mk.Body.selectedCarId -eq 'shadow-gt') $mk.Body.selectedCarId
-    Check "createdAt is populated" ([bool]$mk.Body.createdAt)
+    $password = 'E2ePassw0rd!'
 
+    $anonPlayers = Invoke-Api GET '/api/players' -NoAuth
+    Check "player data is not public" ($anonPlayers.Status -eq 401) $anonPlayers.Status
+    $anonRaces = Invoke-Api GET '/api/races' -NoAuth
+    Check "race data is not public" ($anonRaces.Status -eq 401) $anonRaces.Status
+
+    $mk = Invoke-Api POST '/api/auth/register' @{ displayName = $name; password = $password } -NoAuth
+    Check "POST /api/auth/register returns 201" ($mk.Status -eq 201) $mk.Status
+    $script:Token = $mk.Body.token
+    $playerId = $mk.Body.player.id
+    $createdPlayerIds.Add($playerId)
+    Check "a bearer token was issued" ($script:Token.Length -ge 40) "length $($script:Token.Length)"
+    Check "no password in the register response" (-not ($mk.Raw -match 'password|\$2a\$')) $mk.Raw
+
+    $weak = Invoke-Api POST '/api/auth/register' @{ displayName = "$name`W"; password = 'abc' } -NoAuth
+    Check "a short password is refused" ($weak.Status -eq 400) $weak.Status
+
+    $wrong = Invoke-Api POST '/api/auth/login' @{ displayName = $name; password = 'wrong-one' } -NoAuth
+    Check "a wrong password is 401" ($wrong.Status -eq 401) $wrong.Status
+
+    $back = Invoke-Api POST '/api/auth/login' @{ displayName = $name; password = $password } -NoAuth
+    Check "signing in again works" ($back.Status -eq 200) $back.Status
+
+    $me = Invoke-Api GET '/api/auth/me'
+    Check "GET /api/auth/me returns the player" ($me.Status -eq 200 -and $me.Body.id -eq $playerId)
     $get = Invoke-Api GET "/api/players/$playerId"
     Check "GET the profile returns it" ($get.Status -eq 200 -and $get.Body.id -eq $playerId)
 
     $upd = Invoke-Api PUT "/api/players/$playerId" @{ displayName = $name; selectedCarId = 'inferno-rs' }
     Check "PUT updates the selected car" ($upd.Body.selectedCarId -eq 'inferno-rs') $upd.Body.selectedCarId
 
-    $dup = Invoke-Api POST '/api/players' @{ displayName = $name }
+    $dup = Invoke-Api POST '/api/auth/register' @{ displayName = $name; password = $password } -NoAuth
     Check "a duplicate name is 409 Conflict" ($dup.Status -eq 409) $dup.Status
 
     $missing = Invoke-Api GET '/api/players/plr_does_not_exist'
     Check "an unknown player is 404" ($missing.Status -eq 404) $missing.Status
+    Check "an unauthenticated read is 401" ((Invoke-Api GET '/api/players' -NoAuth).Status -eq 401)
 
     # -- 5-7. Race completion and persistence ------------------------------
     Section "5-7. A race is completed, submitted once, and persisted"
+    # No playerId in the body: the session decides who is racing.
     $raceBody = @{
-        playerId = $playerId; carId = 'apex-vulcan'; trackId = 'hawkins-streets'
+        carId = 'apex-vulcan'; trackId = 'hawkins-streets'
         elapsedTimeMs = 142337; bestLapTimeMs = 46912; position = 1; lapsCompleted = 3
     }
     $race = Invoke-Api POST '/api/races' $raceBody
@@ -273,7 +305,7 @@ try {
         "@($($historyAfterOne.Body).Count)"
 
     $race2 = Invoke-Api POST '/api/races' @{
-        playerId = $playerId; carId = 'apex-vulcan'; trackId = 'hawkins-forest'
+        carId = 'apex-vulcan'; trackId = 'hawkins-forest'
         elapsedTimeMs = 155000; bestLapTimeMs = 51000; position = 2; lapsCompleted = 3
     }
     $createdRaceIds.Add($race2.Body.race.id)
@@ -281,30 +313,42 @@ try {
 
     # Invalid results must be refused.
     $badLap = Invoke-Api POST '/api/races' @{
-        playerId = $playerId; carId = 'apex-vulcan'; trackId = 'hawkins-streets'
+        carId = 'apex-vulcan'; trackId = 'hawkins-streets'
         elapsedTimeMs = 100000; bestLapTimeMs = 150000; position = 1; lapsCompleted = 3
     }
     Check "a lap slower than the race is rejected" ($badLap.Status -eq 400) $badLap.Status
     $badLaps = Invoke-Api POST '/api/races' @{
-        playerId = $playerId; carId = 'apex-vulcan'; trackId = 'hawkins-streets'
+        carId = 'apex-vulcan'; trackId = 'hawkins-streets'
         elapsedTimeMs = 400000; position = 1; lapsCompleted = 9
     }
     Check "more laps than the track has is rejected" ($badLaps.Status -eq 400) $badLaps.Status
+    $badTime = Invoke-Api POST '/api/races' @{
+        carId = 'apex-vulcan'; trackId = 'hawkins-streets'
+        elapsedTimeMs = 400; bestLapTimeMs = 133; position = 1; lapsCompleted = 3
+    }
+    Check "an impossible lap time is rejected" ($badTime.Status -eq 400) $badTime.Status
     $badCar = Invoke-Api POST '/api/races' @{
-        playerId = $playerId; carId = 'delorean'; trackId = 'hawkins-streets'
+        carId = 'delorean'; trackId = 'hawkins-streets'
         elapsedTimeMs = 120000; position = 1; lapsCompleted = 3
     }
     Check "an unknown car is 404" ($badCar.Status -eq 404) $badCar.Status
 
+
     # A second player, so the leaderboard has something to rank.
     $name2 = ($tag + 'B').ToUpper()
-    $mk2 = Invoke-Api POST '/api/players' @{ displayName = $name2 }
-    $player2 = $mk2.Body.id
+    $mk2 = Invoke-Api POST '/api/auth/register' @{ displayName = $name2; password = $password } -NoAuth
+    $player2 = $mk2.Body.player.id
     $createdPlayerIds.Add($player2)
+    $token2 = $mk2.Body.token
+    $cross = Invoke-Api GET "/api/players/$playerId" -Headers @{ Authorization = "Bearer $token2" }
+    Check "another player's profile is 404, not 403" ($cross.Status -eq 404) $cross.Status
     Invoke-Api POST '/api/races' @{
-        playerId = $player2; carId = 'venom-verde'; trackId = 'hawkins-streets'
+        carId = 'venom-verde'; trackId = 'hawkins-streets'
         elapsedTimeMs = 131000; bestLapTimeMs = 43000; position = 2; lapsCompleted = 3
-    } | Out-Null
+    } -Headers @{ Authorization = "Bearer $token2" } | Out-Null
+
+    # Back to the main account for the remaining sections.
+    $script:Token = $mk.Body.token
 
     # -- 8. Race history ---------------------------------------------------
     Section "8. The race history displays the saved result"
@@ -318,6 +362,21 @@ try {
     $empty = Invoke-Api GET '/api/players/plr_nobody/races'
     Check "history for an unknown player is 404, not an empty list" ($empty.Status -eq 404) $empty.Status
 
+    # -- 8b. Idempotency -----------------------------------------------------
+    # Deliberately after the history checks: this probe deliberately adds a row,
+    # and running it earlier would change the counts section 8 asserts on.
+    Section "8b. A retried submission is not counted twice"
+    $idemKey = "$tag-key-0000-0000-000000000001"
+    $idemHeaders = @{ Authorization = "Bearer $script:Token"; 'Idempotency-Key' = $idemKey }
+    $beforeIdem = Invoke-Api GET "/api/players/$playerId/races"
+    $first = Invoke-Api POST '/api/races' $raceBody -Headers $idemHeaders
+    $replay = Invoke-Api POST '/api/races' $raceBody -Headers $idemHeaders
+    Check "a fresh submission is 201" ($first.Status -eq 201) $first.Status
+    Check "a replayed submission is 200, not 201" ($replay.Status -eq 200) $replay.Status
+    $afterIdem = Invoke-Api GET "/api/players/$playerId/races"
+    $grewBy = @($afterIdem.Body).Count - @($beforeIdem.Body).Count
+    Check "the retry added no second row" ($grewBy -eq 1) "history grew by $grewBy"
+    Check "the replay is the same race" ($replay.Body.race.id -eq $first.Body.race.id) $replay.Body.race.id
     # -- 9. Leaderboard ----------------------------------------------------
     Section "9. The leaderboard reflects the saved race"
     $board = Invoke-Api GET '/api/leaderboard?sortBy=bestTimeMs&order=asc&page=0&size=25'
@@ -357,6 +416,12 @@ try {
     # -- 10. Persistence across a restart ----------------------------------
     if (-not $SkipRestartCheck) {
         Section "10. Reloading the application preserves database-backed data"
+        # Snapshot the rows while the process is still up. The property being
+        # tested is "the same rows are still there afterwards", so compare against
+        # this rather than a hardcoded number -- an earlier section legitimately
+        # adds rows, and a fixed count turns that into a false failure that has
+        # nothing to do with persistence.
+        $beforeRestart = @( (Invoke-Api GET "/api/players/$playerId/races").Body )
         Stop-Backend $running
         Write-Host "  backend stopped. Verifying the rows are in MySQL, not memory..."
         $running = Start-Backend
@@ -366,8 +431,15 @@ try {
             $again = Invoke-Api GET "/api/players/$playerId"
             Check "the player survived the restart" ($again.Status -eq 200 -and $again.Body.id -eq $playerId)
             Check "the selected car survived" ($again.Body.selectedCarId -eq 'inferno-rs') $again.Body.selectedCarId
-            $hist2 = Invoke-Api GET "/api/players/$playerId/races"
-            Check "the race history survived" (@($hist2.Body).Count -eq 2) "@($($hist2.Body).Count)"
+            $hist2 = @( (Invoke-Api GET "/api/players/$playerId/races").Body )
+            Check "the race history survived" ($hist2.Count -eq $beforeRestart.Count) `
+                "$($beforeRestart.Count) before, $($hist2.Count) after"
+            # Compare identity, not just count: a restart that re-seeded rows would
+            # pass a count check while losing the actual results.
+            $idsBefore = @($beforeRestart | ForEach-Object { $_.race.id } | Sort-Object)
+            $idsAfter = @($hist2 | ForEach-Object { $_.race.id } | Sort-Object)
+            Check "the same race ids are present after the restart" `
+                (($idsBefore -join ',') -eq ($idsAfter -join ',')) "$($idsAfter -join ',')"
             $board2 = Invoke-Api GET '/api/leaderboard'
             $mine2 = $board2.Body.entries | Where-Object { $_.playerId -eq $playerId }
             Check "the leaderboard entry survived" ([bool]$mine2)

@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { usePlayerProfile } from '../hooks/usePlayerProfile';
 import { HashLink } from '../router/HashLink';
 import type { Screen } from '../router/routes';
 import './main-menu.css';
@@ -23,6 +24,10 @@ const ITEMS: { id: string; label: string; to: Screen; icon: ReactNode }[] = [
 ];
 
 export function MainMenuPage() {
+  // The account entry reads differently once signed in. A player should never
+  // have to discover after a good run that their times were not recorded.
+  const { profile } = usePlayerProfile();
+  const accountLabel = profile ? `SIGNED IN · ${profile.displayName}` : 'SIGN IN TO SAVE RACES';
   return (
     <div className="main-menu-layout">
       {/* Cinematic Hero Background */}
@@ -54,7 +59,7 @@ export function MainMenuPage() {
               <HashLink key={item.id} to={item.to} className="cinematic-nav-item">
                 <span className="nav-accent-line"></span>
                 <span className="nav-icon" aria-hidden="true">{item.icon}</span>
-                <span className="nav-label">{item.label}</span>
+                <span className="nav-label">{item.id === 'auth' ? accountLabel : item.label}</span>
               </HashLink>
             ))}
           </nav>

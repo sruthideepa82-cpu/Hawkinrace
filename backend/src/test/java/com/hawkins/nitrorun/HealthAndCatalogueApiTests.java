@@ -45,14 +45,23 @@ class HealthAndCatalogueApiTests extends ApiTestSupport {
     }
 
     @Test
-    @DisplayName("health still warns that submitted races are not authenticated")
+    @DisplayName("health does not overclaim trust: authentication is not verification")
     void healthDoesNotOverclaimTrust() throws Exception {
         JsonNode health = bodyOf(mvc.perform(get("/api/health")).andExpect(status().isOk()));
         String message = health.get("message").asText().toLowerCase();
 
-        // Durable storage did not make the data trustworthy. Auth is still a
-        // later phase, and the health endpoint must not imply otherwise.
-        assertTrue(message.contains("not authenticated"), message);
+        // Phase 7 closed the authentication hole, but the honesty obligation did not
+        // go away with it -- it moved. A token now proves *who* is submitting a
+        // race; it says nothing about *whether the time is true*, because the
+        // numbers still originate on the client. Health must state the guarantee it
+        // can make (submission is attributed to the session's player) without
+        // implying the one it cannot (the times are trustworthy).
+        //
+        // If this assertion is ever deleted because "auth fixes it", that is the bug.
+        assertTrue(message.contains("bearer token"), message);
+        assertTrue(message.contains("session"), message);
+        assertFalse(message.contains("verified") || message.contains("cheat-proof"),
+                "health must not claim the submitted times are trustworthy: " + message);
     }
 
     @Test

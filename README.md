@@ -35,6 +35,11 @@ Then open **http://localhost:5173**.
 The game is **fully playable with the backend stopped** — only saving results
 and the leaderboard depend on it.
 
+**Race results are saved to an account.** Use **ACCOUNT** on the main menu to
+sign up or sign in. Racing works signed-out, but a signed-out run cannot be
+saved, so the menu labels the entry `SIGN IN TO SAVE RACES` rather than leaving
+you to discover it after a good lap.
+
 ---
 
 ## Requirements
@@ -168,18 +173,39 @@ FROM flyway_schema_history;
 
 Base path `/api`. Full reference in [`backend/README.md`](backend/README.md).
 
+**Public** — no token required:
+
 | Method | Path | Success |
 |---|---|---|
 | GET | `/api/health` | 200 |
 | GET | `/api/cars`, `/api/cars/{id}` | 200 |
 | GET | `/api/tracks`, `/api/tracks/{id}` | 200 |
-| GET | `/api/players`, `/api/players/{id}` | 200 |
-| POST | `/api/players` | **201** |
-| PUT | `/api/players/{id}` | 200 |
-| GET | `/api/players/{id}/races` | 200 |
-| POST | `/api/races` | **201** |
-| GET | `/api/races`, `/api/races/{id}` | 200 |
 | GET | `/api/leaderboard` | 200 |
+| POST | `/api/auth/register` | **201** |
+| POST | `/api/auth/login` | 200 |
+
+**Authenticated** — requires `Authorization: Bearer <token>`:
+
+| Method | Path | Success |
+|---|---|---|
+| GET | `/api/auth/me` | 200 |
+| POST | `/api/auth/logout` | 204 |
+| GET | `/api/players/me` | 200 *(the session's own profile)* |
+| GET | `/api/players/{id}` | 200 *(own id only, else 404)* |
+| PUT | `/api/players/{id}` | 200 *(own id only, else 404)* |
+| GET | `/api/players/{id}/races` | 200 *(own id only, else 404)* |
+| POST | `/api/races` | **201** *(200 on `Idempotency-Key` replay)* |
+| GET | `/api/races`, `/api/races/{id}` | 200 *(own races only)* |
+
+**Removed in Phase 7** — these existed before authentication and no longer do:
+
+| Method | Path | Why |
+|---|---|---|
+| GET | `/api/players` | An open directory of every profile. Replaced by `/api/auth/me`. |
+| POST | `/api/players` | Anonymous account creation. Replaced by `/api/auth/register`. |
+
+Anything not in the table above is **denied** (`anyRequest().denyAll()`), so an
+unlisted route returns 401/403 rather than falling open.
 
 Car and track ids are the **same string literals the game uses**
 (`apex-vulcan`, `hawkins-streets`), so there is no id mapping anywhere.
@@ -190,22 +216,58 @@ Times are **milliseconds** on the wire.
 
 ## Security boundaries
 
-**There is no authentication.** This is stated plainly because it is the most
-important thing to know about this project:
+**Players are authenticated. Race times are still not verified.** Both halves of
+that sentence matter, and it is worth being precise about which is which.
 
-- Anyone may read, create and update **any** player profile.
-- Anyone may submit **any** race for **any** player. Lap times are taken at face
-  value and are **not** verified. Results are not cheat-proof and never will be
-  under the current design.
-- A player id in the browser is a *pointer*, not proof of identity. It lives in
-  `localStorage` and anyone can read or edit it.
+### What authentication now guarantees
+
+Requests carry an opaque bearer token obtained from `POST /api/auth/login`. The
+token proves *who is asking*:
+
+- A player's profile, their race history, and their submissions are reachable
+  only with a valid token. Requesting another player's id returns **404** — the
+  same answer as an id that does not exist, so the endpoint cannot be used to
+  discover which ids are real.
+- `POST /api/races` does not accept a `playerId`. The field was **deleted**
+  rather than ignored, because a present-but-unused field is an invitation to
+  trust it again. Identity comes from the session, never from the request.
+- Sign-out is real: the token is revoked server-side and stops working at once.
+- Tokens are stored SHA-256 hashed, so a database dump cannot be replayed as live
+  sessions. Passwords are BCrypt at strength 10. An unknown display name and a
+  wrong password return the same error after the same work, so sign-in cannot be
+  used to enumerate accounts.
 
 `GET /api/health` reports `persistent: true`, which means the data **survives a
-restart** — not that it is **trustworthy**. Those are different claims and only
-the first is true.
+restart**. It says nothing about whether it is trustworthy, and no longer claims
+to.
 
-What *is* enforced: input validation on both sides, `CHECK` constraints and
-foreign keys in the database, credentials only in gitignored `.env` files, CORS
+### What it does not guarantee
+
+- Lap and race times are **reported by the client** and taken at face value. A
+  token proves the submitter's identity; it does not prove their times are real.
+  **Results are not cheat-proof and never will be under this design.**
+- There is a plausibility floor (`MIN_PLAUSIBLE_LAP_MS`) that rejects a lap time
+  no car could physically drive. This catches the realistic failure of a client
+  dividing by the wrong constant. It is a sanity check, **not** anti-cheat, and
+  is not presented as such.
+- The bearer token lives in `localStorage`, which any script on the page can
+  read. This is the standard trade-off for a token-based SPA with no cookies; it
+  would only be a real problem alongside a third-party script that is not
+  trusted.
+
+### Public surface
+
+Available without a token: `/api/health`, `/api/cars`, `/api/tracks`,
+`/api/leaderboard`, `/api/auth/register`, `/api/auth/login`. The leaderboard is
+public deliberately — it is the game's public face, and a row is a display name,
+a car id and a time, with nothing behind it.
+
+Everything else requires a token. Anything not explicitly named is **denied**,
+not opened, so a new endpoint is unreachable until someone decides its audience.
+
+What *is* enforced, in addition: input validation on both sides, `CHECK`
+constraints and foreign keys in the database, idempotent race submission via an
+`Idempotency-Key` header, credentials only in gitignored `.env` files, CORS
 restricted to configured origins, and error bodies that never contain SQL, class
 names or credentials.
 
@@ -214,11 +276,11 @@ names or credentials.
 ## Testing
 
 ```powershell
-# Frontend: 706 assertions across 12 harnesses
+# Frontend: 711 assertions across 12 harnesses
 cd frontend
 npm test
 
-# Backend: 87 tests against a real MySQL
+# Backend: 112 tests against a real MySQL
 cd backend
 .\mvnw.cmd test
 
@@ -291,7 +353,7 @@ hawkinrace/
 ├── backend/
 │   ├── .env.example            credential template, no secrets
 │   ├── scripts/run-backend.ps1
-│   └── src/…                   Spring Boot, Flyway, JPA, 87 tests
+│   └── src/…                   Spring Boot, Flyway, JPA, 112 tests
 └── frontend/
     ├── .env.example            VITE_API_BASE_URL template
     ├── src/
@@ -299,7 +361,7 @@ hawkinrace/
     │   ├── hooks/              usePlayerProfile, useReferenceData
     │   ├── game/               Phaser — never imports from services/
     │   └── pages/              React screens
-    └── tools/                  12 headless harnesses, 706 assertions
+    └── tools/                  12 headless harnesses, 711 assertions
 ```
 
 Nothing under `src/game/` imports from `src/services/`. Phaser cannot reach the

@@ -22,14 +22,14 @@ import com.hawkins.nitrorun.repository.RaceRepository;
 /**
  * Player profiles. Durable since Phase 5.
  *
- * <p><b>Not authenticated.</b> Anyone may read, create and update any profile.
- * See {@link Player} for why that is acceptable here and what must change
- * before it is not.
+ * <p><b>Owner-scoped since Phase 7.</b> Reading and updating a profile requires
+ * a bearer token, and the controller only serves the token's own player. A
+ * request for anyone else&apos;s id returns 404, the same answer as an id that
+ * does not exist, so the endpoint cannot be used to discover which ids are real.
  *
- * <p>Ids are generated server-side. A client cannot choose its own, because in
- * this phase the id is the only thing distinguishing one self-reported profile
- * from another, and letting a caller pick it would let them overwrite someone
- * else&apos;s profile by guessing.
+ * <p>Ids are still generated server-side. A client cannot choose its own, and a
+ * caller can no longer name a player at all: the identity comes from the session
+ * token, never from the request.
  */
 @Service
 @Transactional(readOnly = true)

@@ -49,6 +49,14 @@ import jakarta.servlet.http.HttpServletResponse;
  * cross-site form or image tag cannot do. Leaving CSRF protection on would block
  * every legitimate request while stopping nothing, because there is no cookie
  * for an attacker to ride.
+ *
+ * <h2>CORS</h2>
+ *
+ * Delegated to {@link CorsConfig}. The ordering matters and is easy to get
+ * wrong: CORS is enforced <em>before</em> authorization, because a preflight
+ * request carries no credentials and therefore cannot answer "who is asking?".
+ * Registering CORS with the servlet instead puts it behind this chain, which
+ * turns every preflight into a 401.
  */
 @Configuration
 @EnableWebSecurity
@@ -68,11 +76,22 @@ public class SecurityConfig {
             // Replaced below with JSON bodies; the default HTML error page is
             // not something a fetch() client can read.
             .csrf(csrf -> csrf.disable())
+            // Installs the CORS filter from CorsConfig ahead of authorization.
+            // Without this the preflight dies at `anyRequest().denyAll()` and the
+            // browser never receives Access-Control-Allow-Origin, which breaks the
+            // frontend from every origin. See CorsConfig for the full explanation.
+            .cors(Customizer.withDefaults())
             // No server-side session: the token is the session. Creating an
             // HttpSession here would also mean every authenticated request got a
             // JSESSIONID cookie, which would re-introduce the CSRF surface.
             .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .authorizeHttpRequests(auth -> auth
+                // The CORS filter answers preflights before authorization runs, but
+                // permitting OPTIONS here is belt-and-braces: it means a preflight
+                // cannot be turned into a 401 by any future reordering of the rules.
+                // OPTIONS carries no credentials, so this opens nothing.
+                .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
+
                 // --- public reference data -------------------------------------
                 .requestMatchers("/api/health", "/actuator/health", "/actuator/info").permitAll()
                 .requestMatchers(HttpMethod.GET, "/api/cars", "/api/cars/**").permitAll()
