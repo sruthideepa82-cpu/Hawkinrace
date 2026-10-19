@@ -3,7 +3,8 @@ import { NeonButton } from '../components/NeonButton';
 import { formatRaceTime } from '../game/utils/geometry';
 import { MAX_STARS } from '../game/systems/Challenge';
 import { useRouter } from '../router/RouterProvider';
-import { useGameStore } from '../store/GameStore';
+import { useGameStore, type RaceSaveState } from '../store/GameStore';
+import './save-status.css';
 
 /**
  * The challenge results overlay.
@@ -12,8 +13,13 @@ import { useGameStore } from '../store/GameStore';
  * with swapped words: the failure state is a stop, and the completion state is
  * a result worth looking at. `outcome` decides which is shown, so a collision
  * failure can never render the completion screen.
+ *
+ * The overlay also states whether the result reached the backend. Those are
+ * genuinely different claims and conflating them would be the worst possible
+ * failure here: a player told their time is saved, who reloads and finds it
+ * gone, has no reason to try again.
  */
-export function ResultsPage() {
+export function ResultsPage({ onRetrySave }: { onRetrySave?: () => void }) {
   const { state, dispatch } = useGameStore();
   const { navigate } = useRouter();
   const result = state.lastResult;
@@ -37,9 +43,80 @@ export function ResultsPage() {
   // screen is a different composition rather than the same one with the
   // position row deleted.
   if (result.mode === 'time-trial') {
-    return <TimeTrialComplete result={result} onRetry={retry} onTrackSelect={trackSelect} onMainMenu={mainMenu} />;
+    return (
+      <TimeTrialComplete
+        result={result}
+        save={state.raceSave}
+        onRetrySave={onRetrySave}
+        onRetry={retry}
+        onTrackSelect={trackSelect}
+        onMainMenu={mainMenu}
+      />
+    );
   }
-  return <ChallengeCompleted result={result} onRetry={retry} onTrackSelect={trackSelect} onMainMenu={mainMenu} />;
+  return (
+    <ChallengeCompleted
+      result={result}
+      save={state.raceSave}
+      onRetrySave={onRetrySave}
+      onRetry={retry}
+      onTrackSelect={trackSelect}
+      onMainMenu={mainMenu}
+    />
+  );
+}
+
+/**
+ * Whether the finished race reached the database.
+ *
+ * Wording is deliberate throughout. "SAVED" appears only when the backend has
+ * confirmed the row exists. A failure says it failed and offers a retry that
+ * cannot create a duplicate, and a local-only result says so plainly rather than
+ * being allowed to look persisted.
+ *
+ * `role="status"` announces the change without stealing focus: this is
+ * information, not a prompt.
+ */
+function SaveStatus({ save, onRetrySave }: { save: RaceSaveState; onRetrySave?: () => void }) {
+  if (save.status === 'idle') return null;
+
+  if (save.status === 'saving') {
+    return (
+      <p className="save-status is-saving" role="status">
+        SAVING TO LEADERBOARD…
+      </p>
+    );
+  }
+
+  if (save.status === 'saved') {
+    return (
+      <p className="save-status is-saved" role="status">
+        ✓ SAVED TO LEADERBOARD
+      </p>
+    );
+  }
+
+  if (save.status === 'skipped') {
+    // Not a failure: the game decided this was not a recordable result.
+    return (
+      <p className="save-status is-skipped" role="status">
+        NOT RECORDED — {save.skippedReason}
+      </p>
+    );
+  }
+
+  return (
+    <div className="save-status is-error" role="alert">
+      <span>NOT SAVED — {save.error}</span>
+      {/* Only offered when retrying could actually help. A 400 would fail the
+          same way forever, and a button that cannot work is worse than none. */}
+      {save.retryable && onRetrySave ? (
+        <NeonButton variant="ghost" onClick={onRetrySave}>
+          RETRY SAVE
+        </NeonButton>
+      ) : null}
+    </div>
+  );
 }
 
 /**
@@ -53,11 +130,15 @@ export function ResultsPage() {
  */
 function TimeTrialComplete({
   result,
+  save,
+  onRetrySave,
   onRetry,
   onTrackSelect,
   onMainMenu,
 }: {
   result: RaceResult;
+  save: RaceSaveState;
+  onRetrySave?: () => void;
   onRetry: () => void;
   onTrackSelect: () => void;
   onMainMenu: () => void;
@@ -120,6 +201,8 @@ function TimeTrialComplete({
             );
           })}
         </div>
+
+        <SaveStatus save={save} onRetrySave={onRetrySave} />
 
         <div className="challenge-actions">
           <NeonButton onClick={onRetry}>RUN IT AGAIN</NeonButton>
@@ -231,11 +314,15 @@ function ChallengeFailed({
 
 function ChallengeCompleted({
   result,
+  save,
+  onRetrySave,
   onRetry,
   onTrackSelect,
   onMainMenu,
 }: {
   result: RaceResult;
+  save: RaceSaveState;
+  onRetrySave?: () => void;
   onRetry: () => void;
   onTrackSelect: () => void;
   onMainMenu: () => void;
@@ -307,6 +394,8 @@ function ChallengeCompleted({
             );
           })}
         </div>
+
+        <SaveStatus save={save} onRetrySave={onRetrySave} />
 
         <div className="challenge-actions">
           <NeonButton onClick={onRetry}>RETRY CHALLENGE</NeonButton>

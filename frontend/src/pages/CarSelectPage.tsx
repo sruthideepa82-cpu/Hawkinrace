@@ -1,5 +1,7 @@
 import { useMemo } from 'react';
-import { CARS, type Car } from '../data/cars';
+import { CARS, type Car, type CarId } from '../data/cars';
+import { CHARACTERS } from '../data/characters';
+import { usePlayerProfile } from '../hooks/usePlayerProfile';
 import { useReferenceData } from '../hooks/useReferenceData';
 import { useRouter } from '../router/RouterProvider';
 import type { BackendCar } from '../services/api';
@@ -42,10 +44,23 @@ export function CarSelectPage() {
   const { state, dispatch } = useGameStore();
   const { navigate } = useRouter();
   const { data } = useReferenceData();
+  const { profile, saveSelectedCar } = usePlayerProfile();
   const cars = useMemo(() => mergeCars(data?.cars), [data]);
 
   const currentCarId = state.selectedCarId || cars[0]?.id || 'apex-vulcan';
   const selectedCar = cars.find(c => c.id === currentCarId) || cars[0];
+
+  /**
+   * Selecting a car both drives the game and records the choice on the profile.
+   *
+   * The save is fire-and-forget: it must not delay the selection, and a backend
+   * that is down costs the player nothing but a preference that will not be
+   * remembered next visit. `saveSelectedCar` already swallows its own errors.
+   */
+  const chooseCar = (carId: CarId) => {
+    dispatch({ type: 'SELECT_CAR', id: carId });
+    saveSelectedCar(carId);
+  };
 
   useKeyPress('Escape', () => navigate('character'));
 
@@ -66,7 +81,12 @@ export function CarSelectPage() {
           <li className="on">CAR</li>
           <li>TRACK</li>
         </ol>
-        <div className="garage-profile">GUEST_DRIVER_01</div>
+        {/* The real profile name once one exists, rather than a hardcoded
+            placeholder. Falls back to the locally chosen driver so the header is
+            never blank, and says so plainly when there is no backend at all. */}
+        <div className="garage-profile">
+          {profile?.displayName ?? CHARACTERS.find((c) => c.id === state.selectedCharacterId)?.name ?? 'GUEST'}
+        </div>
       </header>
 
       <main className="garage-main">
@@ -104,7 +124,7 @@ export function CarSelectPage() {
               <button 
                 key={car.id} 
                 className={`carousel-item ${isSelected ? 'selected' : ''} ${!car.unlocked ? 'locked' : ''}`}
-                onClick={() => dispatch({ type: 'SELECT_CAR', id: car.id })}
+                onClick={() => chooseCar(car.id)}
               >
                 <div className="carousel-img-container">
                   <img src={`/cars/ui-${car.id}.png`} alt={car.name} />
@@ -125,8 +145,11 @@ export function CarSelectPage() {
           <button 
             className="nav-button primary" 
             onClick={() => {
+              // Commit the highlighted car when the player advances without
+              // having clicked a card, so the profile records what they
+              // actually raced rather than only what they tapped.
               if (!state.selectedCarId) {
-                dispatch({ type: 'SELECT_CAR', id: currentCarId });
+                chooseCar(currentCarId);
               }
               navigate('track');
             }}

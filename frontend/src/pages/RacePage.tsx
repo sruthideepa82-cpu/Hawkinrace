@@ -4,10 +4,12 @@ import { NeonButton } from '../components/NeonButton';
 import { ResultsPage } from './ResultsPage';
 import { isTimeTrialMode } from '../data/gameModes';
 import { getDifficulty } from '../game/config/difficulty';
-import type { RaceBridge } from '../game/bridge';
+import type { RaceBridge, RaceResult } from '../game/bridge';
 import { useKeyPress } from '../hooks/useKeyPress';
 import { useRouter } from '../router/RouterProvider';
-import { saveCompletedRace } from '../services/backend';
+import { resetReferenceData } from '../services/backend';
+import { ensureProfile } from '../services/profile';
+import { submitRaceResult } from '../services/raceSubmission';
 import { isRaceReady, useGameStore } from '../store/GameStore';
 
 /**
@@ -27,6 +29,8 @@ export function RacePage({ showResults = false }: { showResults?: boolean }) {
   const { screen, navigate } = useRouter();
   const { character, car, track, mode } = selections;
   const ready = isRaceReady(state);
+  /** The result being displayed, once a race has finished. */
+  const result = state.lastResult;
   // Time Trial runs a solo grid, so the on-screen key hints must not promise a
   // leaderboard or a position that does not exist.
   const solo = isTimeTrialMode(mode?.id);
@@ -62,26 +66,90 @@ export function RacePage({ showResults = false }: { showResults?: boolean }) {
         // page, so backing out of the results should not re-enter it.
         navigate('results', { replace: true });
 
-        // Persist finished races to the backend. Best-effort and non-blocking:
-        // the results screen never waits on the network, and a failed save is
-        // logged rather than shown. Failed races are not recorded.
-        if (result.outcome === 'finished') {
-          void saveCompletedRace({
-            // Ids, not names: these are the same literals the backend uses, so
-            // the save needs no name matching.
-            characterId: character.id,
-            characterName: character.name,
-            carId: car.id,
-            trackId: track.id,
-            totalTimeMs: result.timeMs,
-            bestLapTimeMs: result.playerBestLapMs,
-            position: result.playerPosition,
-            lapsCompleted: result.lapsCompleted,
-          });
-        }
+        // Submit from the Phaser callback rather than a useEffect on the result.
+        // StrictMode double-invokes effects in development, and the results
+        // overlay mounts and unmounts as the player navigates; either would put
+        // a second copy of this in flight. The callback fires once per race, and
+        // `submitRaceResult` dedupes on a fingerprint regardless.
+        void submitAndTrack(character.id, character.name, car.id, track.id, result);
       },
     };
   }, [state.raceKey, state.selectedDifficultyId, character, car, track, mode, dispatch, navigate]);
+
+  /**
+   * Submits the result and records the outcome in the store.
+   *
+   * Defined inside the component so it closes over the current selections, and
+   * passed into the memoised bridge. The store is updated for every outcome so
+   * the results screen can tell the player whether their time was actually
+   * stored -- the difference between "here is your lap time" and "here is your
+   * lap time, saved".
+   */
+  async function submitAndTrack(
+    characterId: string,
+    characterName: string,
+    carId: string,
+    trackId: string,
+    result: RaceResult,
+  ): Promise<void> {
+    // A failed or unfinished race is not a result to record. Still record the
+    // fact, so the screen can say why nothing was sent.
+    const profile = await ensureProfile(characterName);
+    if (!profile) {
+      dispatch({
+        type: 'RACE_SAVE_FAILED',
+        message: 'No player profile: the backend is unreachable.',
+        retryable: true,
+      });
+      return;
+    }
+
+    dispatch({ type: 'RACE_SAVE_STARTED' });
+
+    const outcome = await submitRaceResult({
+      playerId: profile.id,
+      characterId,
+      characterName,
+      carId,
+      trackId,
+      result,
+    });
+
+    switch (outcome.status) {
+      case 'saved':
+        dispatch({ type: 'RACE_SAVE_SUCCEEDED', raceId: outcome.raceId });
+        // The catalogue and player lists are now stale by one row.
+        resetReferenceData();
+        return;
+      case 'already-saved':
+        // A duplicate was suppressed. Report success rather than alarming the
+        // player with an error for something that worked.
+        dispatch({ type: 'RACE_SAVE_SUCCEEDED', raceId: outcome.raceId ?? '' });
+        return;
+      case 'skipped':
+        dispatch({ type: 'RACE_SAVE_SKIPPED', reason: outcome.reason });
+        return;
+      case 'failed':
+        dispatch({
+          type: 'RACE_SAVE_FAILED',
+          message: outcome.message,
+          retryable: outcome.retryable,
+        });
+        return;
+    }
+  }
+
+  /**
+   * Re-sends the last result after a failure.
+   *
+   * Safe to press repeatedly: `submitRaceResult` drops a fingerprint it has
+   * already confirmed, so pressing RETRY on a result that did land is a no-op
+   * rather than a duplicate row.
+   */
+  const retrySave = () => {
+    if (!character || !car || !track || !result) return;
+    void submitAndTrack(character.id, character.name, car.id, track.id, result);
+  };
 
   const quit = () => navigate('menu');
   useKeyPress('Escape', quit);
@@ -108,7 +176,7 @@ export function RacePage({ showResults = false }: { showResults?: boolean }) {
           </footer>
         </>
       )}
-      {resultsVisible && <ResultsPage />}
+      {resultsVisible && <ResultsPage onRetrySave={retrySave} />}
     </section>
   );
 }

@@ -1,14 +1,21 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { NeonButton } from '../components/NeonButton';
 import { ScreenFrame } from '../components/ScreenFrame';
 import { TRACKS } from '../data/tracks';
 import { formatRaceTime } from '../game/utils/geometry';
+import { usePlayerProfile } from '../hooks/usePlayerProfile';
 import { useRouter } from '../router/RouterProvider';
-import { getLeaderboard, getPlayerRaces, type LeaderboardEntry } from '../services/api';
+import {
+  getLeaderboard,
+  getPlayerRaces,
+  type LeaderboardEntry,
+  type RaceRecord,
+} from '../services/api';
+import { useGameStore } from '../store/GameStore';
 
 type Status = 'loading' | 'ready' | 'error';
 
-/** One rendered row. The time is always for the track in scope, never overall. */
+/** One rendered leaderboard row. The time is always for the track in scope. */
 interface BoardRow {
   key: string;
   playerId: string;
@@ -18,29 +25,43 @@ interface BoardRow {
   racesCompleted: number;
 }
 
-/** Rows are shown at most this many, which also bounds the history fetches. */
-const BOARD_SIZE = 25;
-
 const ALL_TRACKS = 'all';
+const PAGE_SIZE = 10;
 
 /**
- * Online leaderboard, from GET /api/leaderboard.
+ * Database-backed leaderboard and the player's own race history.
  *
- * The backend ranks **players overall**, scored across every race they have on
- * record. This screen is per-track, so when a track is selected each visible
- * player's best time *on that track* is read from their race history instead.
- * Showing the overall best under a track tab would misreport it as a time on
- * that track.
+ * Three rules this screen follows:
  *
- * A per-track ranking computed server-side is a Phase 5/6 item -- see the
- * backend README. Until then this is the honest version, at the cost of one
- * small request per visible player, which is bounded by BOARD_SIZE.
+ *  - **Never invent rows.** If the API fails, the screen says so. A hardcoded
+ *    or local fallback board would look identical to a real one and quietly
+ *    misrepresent who has actually driven what.
+ *  - **Always show a real time for the track in scope.** The backend ranks
+ *    players *overall*; when a single track is selected the displayed time is
+ *    read from that player's history for that track, because their overall best
+ *    may have been set somewhere else entirely.
+ *  - **Refetch after a save.** `leaderboardVersion` bumps when a race is
+ *    confirmed stored, so the player's own new time appears without a manual
+ *    refresh. Otherwise a successful save would look like it had failed.
  */
 export function LeaderboardPage() {
   const { navigate } = useRouter();
+  const { state } = useGameStore();
+  const { profile } = usePlayerProfile();
+
   const [scope, setScope] = useState<string>(ALL_TRACKS);
+  const [page, setPage] = useState(0);
   const [rows, setRows] = useState<BoardRow[]>([]);
+  const [totalPages, setTotalPages] = useState(0);
   const [status, setStatus] = useState<Status>('loading');
+  const [history, setHistory] = useState<RaceRecord[] | null>(null);
+
+  // Changing the scope invalidates the current page number; keeping page 3 while
+  // switching to a track with one page of results would show an empty board.
+  const changeScope = useCallback((next: string) => {
+    setScope(next);
+    setPage(0);
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -49,30 +70,37 @@ export function LeaderboardPage() {
 
     (async () => {
       try {
-        const board = await getLeaderboard({ sortBy: 'bestTimeMs', order: 'asc', size: BOARD_SIZE });
+        const board = await getLeaderboard({
+          sortBy: 'bestTimeMs',
+          order: 'asc',
+          page,
+          size: PAGE_SIZE,
+        });
+        if (!active) return;
+        setTotalPages(board.totalPages);
 
         if (scope === ALL_TRACKS) {
-          if (!active) return;
-          setRows(board.entries.map(toRow));
+          setRows(board.entries.map((entry) => toRow(entry)));
           setStatus('ready');
           return;
         }
 
         // Per-track: keep only players who have actually raced here, and show
-        // their quickest lap-level total on this track.
+        // their quickest total ON THIS TRACK rather than overall. One request
+        // per row on the current page, never for rows the player cannot see.
         const entries = await Promise.all(
           board.entries.map(async (entry) => {
             const races = await getPlayerRaces(entry.playerId);
             const best = races
               .filter((race) => race.trackId === scope)
               .reduce<number | null>(
-                (lowest, race) => (lowest === null || race.elapsedTimeMs < lowest ? race.elapsedTimeMs : lowest),
+                (lowest, race) =>
+                  lowest === null || race.elapsedTimeMs < lowest ? race.elapsedTimeMs : lowest,
                 null,
               );
             return best === null ? null : toRow(entry, best);
           }),
         );
-
         if (!active) return;
         setRows(entries.filter((row): row is BoardRow => row !== null));
         setStatus('ready');
@@ -85,7 +113,29 @@ export function LeaderboardPage() {
     return () => {
       active = false;
     };
-  }, [scope]);
+    // `state.leaderboardVersion` is a deliberate dependency: it is how a
+    // confirmed save makes this screen refetch.
+  }, [scope, page, state.leaderboardVersion]);
+
+  // The player's own history, refreshed on the same signal as the board.
+  useEffect(() => {
+    if (!profile) {
+      setHistory(null);
+      return;
+    }
+    let active = true;
+    getPlayerRaces(profile.id)
+      .then((races) => {
+        if (active) setHistory(races);
+      })
+      .catch((error) => {
+        console.warn('[backend] Race history unavailable:', error);
+        if (active) setHistory(null);
+      });
+    return () => {
+      active = false;
+    };
+  }, [profile, state.leaderboardVersion]);
 
   const scopeLabel =
     scope === ALL_TRACKS ? 'ALL TRACKS' : (TRACKS.find((t) => t.id === scope)?.name ?? 'TRACK');
@@ -95,7 +145,7 @@ export function LeaderboardPage() {
       <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '20px' }}>
         <NeonButton
           variant={scope === ALL_TRACKS ? 'primary' : 'ghost'}
-          onClick={() => setScope(ALL_TRACKS)}
+          onClick={() => changeScope(ALL_TRACKS)}
         >
           ALL
         </NeonButton>
@@ -103,7 +153,7 @@ export function LeaderboardPage() {
           <NeonButton
             key={t.id}
             variant={t.id === scope ? 'primary' : 'ghost'}
-            onClick={() => setScope(t.id)}
+            onClick={() => changeScope(t.id)}
           >
             {t.name}
           </NeonButton>
@@ -115,8 +165,11 @@ export function LeaderboardPage() {
       {status === 'error' && (
         <div className="placeholder">
           <div className="placeholder-icon" aria-hidden="true">⚠</div>
-          <p>BACKEND OFFLINE</p>
-          <small>Start the Spring Boot server on http://localhost:8080 and try again.</small>
+          <p>LEADERBOARD UNAVAILABLE</p>
+          <small>
+            The backend could not be reached. Start it on http://localhost:8080 and try again. No times are
+            shown rather than guessed.
+          </small>
         </div>
       )}
 
@@ -124,26 +177,84 @@ export function LeaderboardPage() {
         <div className="placeholder">
           <div className="placeholder-icon" aria-hidden="true">🏁</div>
           <p>NO TIMES YET</p>
-          <small>Finish a race to set the first time.</small>
+          <small>Finish a race on this track to set the first time.</small>
         </div>
       )}
 
       {status === 'ready' && rows.length > 0 && (
-        <div className="telemetry-panel">
-          <h3 className="telemetry-title">{scopeLabel} — FASTEST TIMES</h3>
-          <div className="telemetry-list">
-            {rows.map((row, index) => (
-              <div key={row.key} className="telemetry-row">
-                <span className="t-pos">{String(index + 1).padStart(2, '0')}</span>
-                <span className="t-name">{row.displayName}</span>
-                <span className="t-time" style={{ marginRight: '16px' }}>{row.carId}</span>
-                <span className="t-time">{formatRaceTime(row.timeMs)}</span>
-              </div>
-            ))}
+        <>
+          <div className="telemetry-panel">
+            <h3 className="telemetry-title">{scopeLabel} — FASTEST TIMES</h3>
+            <div className="telemetry-list">
+              {rows.map((row, index) => (
+                <div key={row.key} className="telemetry-row">
+                  <span className="t-pos">{String(page * PAGE_SIZE + index + 1).padStart(2, '0')}</span>
+                  <span className="t-name">{row.displayName}</span>
+                  <span className="t-time" style={{ marginRight: '16px' }}>{row.carId}</span>
+                  <span className="t-time">{formatRaceTime(row.timeMs)}</span>
+                </div>
+              ))}
+            </div>
           </div>
+
+          {totalPages > 1 && (
+            <div className="leaderboard-paging">
+              <NeonButton variant="ghost" disabled={page === 0} onClick={() => setPage((p) => p - 1)}>
+                PREV
+              </NeonButton>
+              <span className="muted">
+                PAGE {page + 1} / {totalPages}
+              </span>
+              <NeonButton
+                variant="ghost"
+                disabled={page >= totalPages - 1}
+                onClick={() => setPage((p) => p + 1)}
+              >
+                NEXT
+              </NeonButton>
+            </div>
+          )}
+        </>
+      )}
+
+      <PlayerHistory profileId={profile?.id ?? null} races={history} />
+    </ScreenFrame>
+  );
+}
+
+/**
+ * This player's own races, newest first.
+ *
+ * Straight from the database, so it survives a reload and a cleared browser.
+ * The empty state says what to do rather than just showing nothing, because
+ * "no data" and "not loaded" look identical without it.
+ */
+function PlayerHistory({ profileId, races }: { profileId: string | null; races: RaceRecord[] | null }) {
+  if (!profileId) return null;
+
+  return (
+    <div className="telemetry-panel leaderboard-history">
+      <h3 className="telemetry-title">YOUR RACES</h3>
+
+      {/* null means still loading or unavailable; [] means genuinely no races.
+          The two are different and are not collapsed into one. */}
+      {races === null ? (
+        <p className="muted">Loading your races…</p>
+      ) : races.length === 0 ? (
+        <p className="muted">You have not completed a race yet. Finish one and it will appear here.</p>
+      ) : (
+        <div className="telemetry-list">
+          {races.slice(0, 10).map((race) => (
+            <div key={race.id} className="telemetry-row">
+              <span className="t-pos">P{race.position}</span>
+              <span className="t-name">{race.trackId}</span>
+              <span className="t-time" style={{ marginRight: '16px' }}>{race.carId}</span>
+              <span className="t-time">{formatRaceTime(race.elapsedTimeMs)}</span>
+            </div>
+          ))}
         </div>
       )}
-    </ScreenFrame>
+    </div>
   );
 }
 

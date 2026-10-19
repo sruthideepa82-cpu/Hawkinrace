@@ -152,3 +152,37 @@
   line-height: 1.4;
   font-style: italic;
 }
+
+
+/* ---------------------------------------------------------------------------
+   Persisted-profile status line.
+
+   Appears under the driver grid once the backend has answered. Deliberately
+   quiet: it is confirmation, not a call to action, and the portraits are the
+   thing the player is here to look at.
+   --------------------------------------------------------------------------- */
+.character-profile-note {
+  margin-top: 18px;
+  text-align: center;
+  font-size: 0.76rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  opacity: 0.75;
+}
+
+.character-profile-note.is-linked {
+  color: var(--color-neon-green, #39ff88);
+}
+
+/* Offline is a normal local state, not an error, so it is grey rather than red.
+   A player with the backend stopped should not be told something is broken. */
+.character-profile-note.is-offline {
+  color: var(--color-muted, #8a8f98);
+}
+
+/* Waiting on the answer. Faintest of the three, because it is the only state
+   that is about to change on its own. */
+.character-profile-note.is-pending {
+  color: var(--color-muted, #8a8f98);
+  opacity: 0.55;
+}

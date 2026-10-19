@@ -17,3 +17,9 @@ Thumbs.db
 
 # Note: frontend/dist is intentionally tracked so the built game ships with the
 # source. Do not add `dist/` here.
+
+# Local environment files. The .example templates ARE committed; the real
+# files carry database credentials and must never be.
+.env
+.env.local
+!.env.example

@@ -1,0 +1,65 @@
+/**
+ * Save-status styling for the results overlay.
+ *
+ * Colours are chosen so the three states cannot be confused at a glance, and so
+ * neither the success nor the failure state relies on colour alone -- each also
+ * carries a distinct word and a distinct icon, which is what a colourblind
+ * player, a player on a washed-out screen, or a screen reader actually receives.
+ */
+
+.save-status {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin: 16px auto 0;
+  padding: 8px 14px;
+  border: 1px solid currentColor;
+  font-family: var(--font-display, inherit);
+  font-size: 0.78rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  /* Kept subtle: this is status information, not the headline. The lap time
+     above it stays the thing the player came here to look at. */
+  opacity: 0.92;
+}
+
+.save-status.is-saving {
+  color: var(--color-neon-cyan, #7fe7ff);
+  opacity: 0.8;
+}
+
+.save-status.is-saved {
+  color: var(--color-neon-green, #39ff88);
+}
+
+.save-status.is-skipped {
+  color: var(--color-muted, #8a8f98);
+}
+
+/* Red, and the only state carrying an alert role, because it is the only one
+   the player may need to act on. */
+.save-status.is-error {
+  color: var(--color-neon-pink, #ff5c8a);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .save-status {
+    animation: none;
+  }
+}
+/* ---------------------------------------------------------------------------
+   Leaderboard paging and the player's own history panel.
+   --------------------------------------------------------------------------- */
+.leaderboard-paging {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  margin-top: 16px;
+}
+
+.leaderboard-history {
+  margin-top: 28px;
+}

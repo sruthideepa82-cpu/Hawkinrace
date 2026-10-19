@@ -17,8 +17,50 @@
  *    and no matching-on-name, so the API and the game cannot drift apart.
  */
 
-/** Base URL of the Spring Boot API. Override with VITE_API_URL if needed. */
-export const API_BASE_URL: string = import.meta.env.VITE_API_URL ?? 'http://localhost:8080';
+/**
+ * Base URL of the Spring Boot API.
+ *
+ * Configured with `VITE_API_BASE_URL` (see `.env.example`). `VITE_API_URL` is
+ * still honoured so an older local `.env` keeps working.
+ *
+ * Read through {@link readEnv} rather than `import.meta.env` directly: Vite
+ * replaces that object at build time, but the headless harnesses in `tools/`
+ * run under plain Node where it does not exist. Touching the property directly
+ * would throw `Cannot read properties of undefined` the moment a test imported
+ * this file.
+ *
+ * No secret belongs here. Everything VITE_-prefixed is inlined into the bundle
+ * and is public; the database is never contacted from the browser.
+ */
+export function readEnv(): Record<string, string | undefined> {
+  try {
+    return (import.meta as unknown as { env?: Record<string, string | undefined> }).env ?? {};
+  } catch {
+    // No `import.meta` at all (plain Node, or a bundler that stripped it).
+    return {};
+  }
+}
+
+/** Set by tests to point the client at a stub server. `null` restores config. */
+let baseUrlOverride: string | null = null;
+
+/** Test seam. Not used by application code. */
+export function setApiBaseUrl(url: string | null): void {
+  baseUrlOverride = url;
+}
+
+function defaultBaseUrl(): string {
+  const env = readEnv();
+  const configured = env.VITE_API_BASE_URL ?? env.VITE_API_URL ?? 'http://localhost:8080';
+  // A trailing slash would produce 'http://host:8080//api/cars'. Harmless to
+  // most servers, but worth normalising rather than debugging later.
+  return configured.replace(/\/+$/, '');
+}
+
+/** The URL every request is built from. */
+export function apiBaseUrl(): string {
+  return baseUrlOverride ?? defaultBaseUrl();
+}
 
 /* -------------------------------------------------------------------------- */
 /* Wire types. These mirror the backend DTOs exactly.                          */
@@ -168,34 +210,61 @@ export class ApiRequestError extends Error {
   readonly status: number;
   /** Per-field validation messages, when the backend supplied them. */
   readonly fieldErrors: Record<string, string>;
+  /** The underlying failure, when there was one. Never shown to the player. */
+  readonly detail: string | undefined;
 
-  constructor(status: number, message: string, fieldErrors: Record<string, string> = {}) {
+  constructor(
+    status: number,
+    message: string,
+    fieldErrors: Record<string, string> = {},
+    detail?: string,
+  ) {
     super(message);
     this.name = 'ApiRequestError';
     this.status = status;
     this.fieldErrors = fieldErrors;
+    this.detail = detail;
   }
 
   /** True when the backend could not be reached at all. */
   get isOffline(): boolean {
     return this.status === 0;
   }
+
+  /**
+   * True when the same request could plausibly succeed later.
+   *
+   * Used to decide whether to offer a RETRY. A 400 is the server rejecting the
+   * data itself; retrying it unchanged would fail identically forever, so
+   * offering the button would be a lie.
+   */
+  get isRetryable(): boolean {
+    return this.isOffline || this.status === 408 || this.status === 429 || this.status >= 500;
+  }
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const base = apiBaseUrl();
   let response: Response;
   try {
-    response = await fetch(`${API_BASE_URL}${path}`, {
+    response = await fetch(`${base}${path}`, {
       // Only attach Content-Type when there is a body to describe. Setting it on
       // a GET forces the browser into a CORS preflight for a request that has
       // nothing to preflight.
       ...(init?.body ? { headers: { 'Content-Type': 'application/json' } } : {}),
       ...init,
     });
-  } catch {
-    // Network-level failure: the backend is probably not running. Status 0 marks
-    // this so callers can tell "offline" apart from "the server said no".
-    throw new ApiRequestError(0, `Cannot reach the backend at ${API_BASE_URL}`);
+  } catch (cause) {
+    // Network-level failure: the backend is probably not running, or CORS
+    // blocked it. Status 0 marks this so callers can tell "offline" apart from
+    // "the server said no" -- a distinction the UI has to make, because one is
+    // recoverable by retrying and the other usually is not.
+    throw new ApiRequestError(
+      0,
+      `Cannot reach the backend at ${base}`,
+      {},
+      cause instanceof Error ? cause.message : undefined,
+    );
   }
 
   if (!response.ok) {
@@ -214,7 +283,19 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   if (response.status === 204) {
     return undefined as T;
   }
-  return (await response.json()) as T;
+
+  // An empty body where JSON was expected is a server bug, not an empty result.
+  // Returning undefined here would surface as a TypeError three frames away,
+  // which is much harder to trace than failing here with the URL attached.
+  const text = await response.text();
+  if (!text) {
+    throw new ApiRequestError(response.status, `Empty response from ${base}${path}`);
+  }
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    throw new ApiRequestError(response.status, `Malformed JSON from ${base}${path}`);
+  }
 }
 
 /** Builds a query string, dropping anything null/undefined/empty. */
